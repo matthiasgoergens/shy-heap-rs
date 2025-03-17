@@ -51,16 +51,12 @@ impl<T: Ord> Pairing<T> {
         let Pairing { key, children } = self;
         (
             key,
-            if children.is_empty() {
-                None
-            } else {
-                todo!();
-                // let mut children = children.into_iter();
-                // let first = children.next().unwrap();
-                // let rest = children.fold(Pairing::new(Pool::new(None)), |acc, x| acc.meld(x));
-                // Some(rest)
-                None
-            },
+            Self::merge_pairs(children)
+
         )
+    }
+
+    pub fn merge_pairs(_items: Vec<Self>) -> Option<Self> {
+        todo!();
     }
 }
