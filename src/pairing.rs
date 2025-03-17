@@ -106,26 +106,28 @@ impl<T: Ord> Pairing<T> {
         children
     }
 
-    pub fn merge_pairs(items: Vec<Self>) -> Option<Self> {
-        // We can probably also just chunk M items at a time (via a reduce),
-        // sift every full chunk (or every but the last chunk?) and then reduce everything once (without any sifting).
-        // Instead of our tree based approach.
-        let mut items = items;
+    pub fn merge_chunk(mut items: Vec<Self>) -> Option<Self> {
         loop {
-            for _ in 0..EVERY {
-                items = items
-                    .into_iter()
-                    .chunks(2)
-                    .into_iter()
-                    .filter_map(|pair| pair.reduce(Self::meld))
-                    .collect();
-                if items.len() < 2 {
-                    return items.into_iter().reduce(Self::meld);
-                }
+            items = items
+                .into_iter()
+                .chunks(2)
+                .into_iter()
+                .filter_map(|pair| pair.reduce(Self::meld))
+                .collect();
+            if items.len() < 2 {
+                return items.into_iter().reduce(Self::meld);
             }
-            // This is potentially arbitrarily recursive.
-            items = items.into_iter().map(Self::sift_min).collect();
         }
+    }
+
+    pub fn merge_pairs(items: Vec<Self>) -> Option<Self> {
+        items
+            .into_iter()
+            .chunks(CHUNKS)
+            .into_iter()
+            .map(Iterator::collect::<Vec<_>>)
+            .filter_map(Self::merge_chunk)
+            .reduce(|a, b| a.meld(b).sift_min())
     }
 
     pub fn merge_pairs_flat(items: Vec<Self>) -> Option<Self> {
@@ -164,5 +166,5 @@ impl<T> From<Pairing<T>> for Vec<T> {
 }
 
 /// This one controls the soft heap's 'epsilon' corruption behaviour.
-const EVERY: usize = 3;
+// const EVERY: usize = 3;
 const CHUNKS: usize = 4;

@@ -68,6 +68,21 @@ combine (x:y:xs) = combine (sift (merge x y) : xs)
 mergeWithSift :: Ord a => [PairingHeap a] -> PairingHeap a
 mergeWithSift xs = combine $ map mergeChunk $ chunksOf m xs
 
+{-
+This variant doesn't corrupt enough to get O(1) amortised deleteMin.
+
+-- Merge with sifting
+mergeWithSift :: (Ord a) => [PairingHeap a] -> PairingHeap a
+mergeWithSift xs =
+  ( if length xs > m
+      then sift
+      else id
+  )
+    $ foldr merge Empty
+    $ map (foldr1 merge)
+    $ chunksOf 2 xs
+-}
+
 -- Sift operation for introducing controlled corruption
 -- This combines children and pools their minimum with the current root
 sift :: Ord a => PairingHeap a -> PairingHeap a
@@ -116,8 +131,7 @@ example = do
   -- DeleteMin with corruption example
   let corruptedHeap = Node (Pool 1 2) [Node (Pool 5 0) []]
   print $ corruptedHeap                      -- Pool 1 2 - has representative value 1 and 2 corrupted elements
-  print $ deleteMin corruptedHeap            -- :q
-  Pool 1 1 - removed one corrupted element
+  print $ deleteMin corruptedHeap            -- Pool 1 1 - removed one corrupted element
   print $ deleteMin (deleteMin corruptedHeap)  -- Pool 1 0 - removed second corrupted element
   print $ deleteMin (deleteMin (deleteMin corruptedHeap))  -- Finally removes representative, restructures heap
   
