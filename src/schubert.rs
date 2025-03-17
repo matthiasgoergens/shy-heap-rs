@@ -6,10 +6,10 @@ pub enum Operation<T> {
     DeleteMin,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Bucket<T> {
     pub inserts: Vec<T>,
-    pub deletes: isize,
+    pub deletes: usize,
 }
 
 pub type Buckets<T> = Vec<Bucket<T>>;
@@ -32,8 +32,7 @@ pub fn sim_naive<T: Ord>(ops: Vec<Operation<T>>) -> Vec<T> {
     h.into_iter().map(|Reverse(x)| x).collect::<Vec<_>>()
 }
 
-pub fn bucket<T>(ops: Vec<Operation<T>>) -> Buckets<T> {
-    // let mut buckets = vec![];
+pub fn into_buckets<T>(ops: Vec<Operation<T>>) -> Buckets<T> {
     ops.into_iter()
         .map(|op| match op {
             Operation::Insert(x) => Bucket {
@@ -46,4 +45,55 @@ pub fn bucket<T>(ops: Vec<Operation<T>>) -> Buckets<T> {
             },
         })
         .collect::<Vec<Bucket<T>>>()
+}
+
+pub fn from_buckets<T>(buckets: Buckets<T>) -> Vec<Operation<T>> {
+    buckets
+        .into_iter()
+        .flat_map(|bucket| {
+            let mut ops = Vec::new();
+            for x in bucket.inserts {
+                ops.push(Operation::Insert(x));
+            }
+            for _ in 0..bucket.deletes {
+                ops.push(Operation::DeleteMin);
+            }
+            ops
+        })
+        .collect::<Vec<Operation<T>>>()
+}
+
+// def merge_blocks(blocks: List[Block]) -> List[Block]:
+// # Now we merge our blocks.
+// new_blocks = []
+// for block in blocks:
+//     while True:
+//         if len(block.pushes) > len(block.pops) or new_blocks == []:
+//             if len(new_blocks) == 0:
+//                 block.pops = block.pops[: len(block.pushes)]
+//             new_blocks.append(block)
+//             break
+//         else:
+//             last_block = new_blocks.pop()
+//             block.pushes = last_block.pushes + block.pushes
+//             block.pops = last_block.pops + block.pops
+// return new_blocks
+
+pub fn normalise_buckets<T>(buckets: Buckets<T>) -> Buckets<T> {
+    let mut new_buckets = Vec::new();
+    let mut buckets = buckets.into_iter();
+    if let Some(mut last_bucket) = buckets.next() {
+        for bucket in buckets {
+            if bucket.inserts.len() > bucket.deletes {
+                new_buckets.push(last_bucket);
+                last_bucket = bucket;
+            } else {
+                last_bucket.inserts.extend(bucket.inserts);
+                last_bucket.deletes += bucket.deletes;
+            }
+        }
+
+        new_buckets.push(last_bucket);
+    }
+    new_buckets
 }
