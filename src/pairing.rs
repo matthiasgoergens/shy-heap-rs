@@ -13,6 +13,21 @@ impl<T> Pool<T> {
     pub fn new(item: T) -> Self {
         Pool { item, count: 0 }
     }
+
+    pub fn pop(self) -> (Option<T>, Option<Self>) {
+        assert!(self.count >= 0);
+        if self.count <= 0 {
+            (Some(self.item), None)
+        } else {
+            (
+                None,
+                Some(Self {
+                    count: self.count - 1,
+                    ..self
+                }),
+            )
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -20,13 +35,18 @@ pub struct Pairing<T> {
     pub key: Pool<T>,
     pub children: Vec<Pairing<T>>,
 }
-
-impl<T> Pairing<T> {
-    pub fn new(key: Pool<T>) -> Self {
-        Pairing {
+impl<T> From<Pool<T>> for Pairing<T> {
+    fn from(key: Pool<T>) -> Self {
+        Self {
             key,
             children: vec![],
         }
+    }
+}
+
+impl<T> Pairing<T> {
+    pub fn new(item: T) -> Self {
+        Self::from(Pool::new(item))
     }
 }
 
@@ -46,12 +66,24 @@ impl<T: Ord> Pairing<T> {
     }
 
     pub fn insert(self, item: T) -> Self {
-        self.meld(Pairing::new(Pool::new(item)))
+        self.meld(Self::new(item))
     }
 
-    pub fn pop_min(self) -> (Pool<T>, Option<Self>) {
+    pub fn pop_min(self) -> (Option<T>, Option<Self>) {
         let Pairing { key, children } = self;
-        (key, Self::merge_pairs(children))
+        let (popped, remainder) = key.pop();
+        (
+            popped,
+            match remainder {
+                None => Self::merge_pairs(children),
+                Some(key) => Some(Self { key, children }),
+            },
+        )
+    }
+
+    pub fn delete_min(self) -> Option<Self> {
+        let (_, children) = self.pop_min();
+        children
     }
 
     pub fn merge_pairs(items: Vec<Self>) -> Option<Self> {
