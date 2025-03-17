@@ -28,6 +28,13 @@ impl<T> Pool<T> {
             )
         }
     }
+
+    pub fn merge(self, other: Self) -> Self {
+        Self {
+            item: other.item,
+            count: self.count + other.count + 1,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -35,6 +42,7 @@ pub struct Pairing<T> {
     pub key: Pool<T>,
     pub children: Vec<Pairing<T>>,
 }
+
 impl<T> From<Pool<T>> for Pairing<T> {
     fn from(key: Pool<T>) -> Self {
         Self {
@@ -49,10 +57,6 @@ impl<T> Pairing<T> {
         Self::from(Pool::new(item))
     }
 }
-
-// pub fn sift(a: T) -> Pool<T> {
-//     todo!();
-// }
 
 impl<T: Ord> Pairing<T> {
     pub fn meld(self, other: Pairing<T>) -> Pairing<T> {
@@ -81,17 +85,42 @@ impl<T: Ord> Pairing<T> {
         )
     }
 
+    pub fn sift_min(self) -> Self {
+        let Pairing { key, children } = self;
+        match Self::merge_pairs(children) {
+            None => Pairing::from(key),
+            Some(pairing) => {
+                assert!(key.item <= pairing.key.item);
+                Pairing {
+                    key: key.merge(pairing.key),
+                    ..pairing
+                }
+            }
+        }
+    }
+
     pub fn delete_min(self) -> Option<Self> {
         let (_, children) = self.pop_min();
         children
     }
 
     pub fn merge_pairs(items: Vec<Self>) -> Option<Self> {
-        items
-            .into_iter()
-            .chunks(2)
-            .into_iter()
-            .filter_map(|pair| pair.reduce(Self::meld))
-            .reduce(Self::meld)
+        let mut items = items;
+        loop {
+            for _ in 0..EVERY - 1 {
+                if items.len() < 2 {
+                    return items.into_iter().reduce(Self::meld);
+                }
+                items = items
+                    .into_iter()
+                    .chunks(2)
+                    .into_iter()
+                    .filter_map(|pair| pair.reduce(Self::meld))
+                    .collect()
+            }
+            items = items.into_iter().map(Self::sift_min).collect();
+        }
     }
 }
+
+const EVERY: usize = 3;
