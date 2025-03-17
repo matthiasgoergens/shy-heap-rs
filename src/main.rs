@@ -28,6 +28,7 @@ Or perhaps use Python?  Easier for more people to read?
 
 */
 
+pub mod pairing;
 pub mod trees;
 
 use std::marker::PhantomData;
