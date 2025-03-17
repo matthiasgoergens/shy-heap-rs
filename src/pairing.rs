@@ -1,6 +1,8 @@
 // Soft heaps based on pairing heaps.
 // We do min-heaps by default.
 
+use itertools::Itertools;
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pool<T> {
     pub item: T,
@@ -49,14 +51,15 @@ impl<T: Ord> Pairing<T> {
 
     pub fn pop_min(self) -> (Pool<T>, Option<Self>) {
         let Pairing { key, children } = self;
-        (
-            key,
-            Self::merge_pairs(children)
-
-        )
+        (key, Self::merge_pairs(children))
     }
 
-    pub fn merge_pairs(_items: Vec<Self>) -> Option<Self> {
-        todo!();
+    pub fn merge_pairs(items: Vec<Self>) -> Option<Self> {
+        items
+            .into_iter()
+            .chunks(2)
+            .into_iter()
+            .filter_map(|pair| pair.reduce(Self::meld))
+            .reduce(Self::meld)
     }
 }
