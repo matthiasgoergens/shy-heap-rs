@@ -75,18 +75,6 @@ impl<T: Ord> Pairing<T> {
         self.meld(Self::new(item))
     }
 
-    pub fn pop_min(self) -> (Option<T>, Option<Self>) {
-        let Pairing { key, children } = self;
-        let (popped, remainder) = key.pop();
-        (
-            popped,
-            match remainder {
-                None => Self::merge_pairs(children),
-                Some(key) => Some(Self { key, children }),
-            },
-        )
-    }
-
     pub fn sift_min(self) -> Self {
         let Pairing { key, children } = self;
         match Self::merge_pairs(children) {
@@ -102,8 +90,14 @@ impl<T: Ord> Pairing<T> {
     }
 
     pub fn delete_min(self) -> Option<Self> {
-        let (_, children) = self.pop_min();
-        children
+        {
+            let Pairing { key, children } = self;
+            let (_popped, remainder) = key.pop();
+            match remainder {
+                None => Self::merge_pairs(children),
+                Some(key) => Some(Self { key, children }),
+            }
+        }
     }
 
     pub fn merge_chunk(mut items: Vec<Self>) -> Option<Self> {
@@ -121,21 +115,16 @@ impl<T: Ord> Pairing<T> {
     }
 
     pub fn merge_pairs(items: Vec<Self>) -> Option<Self> {
+        // Many other schemes are possible.
+        // As long as you corrupt O(children) elements,
+        // and not only at the very end.
         items
             .into_iter()
+            // If you pick a power of two you get something nice here.
             .chunks(CHUNKS)
             .into_iter()
-            .map(Iterator::collect::<Vec<_>>)
+            .map(Iterator::collect)
             .filter_map(Self::merge_chunk)
-            .reduce(|a, b| a.meld(b).sift_min())
-    }
-
-    pub fn merge_pairs_flat(items: Vec<Self>) -> Option<Self> {
-        items
-            .into_iter()
-            .chunks(CHUNKS)
-            .into_iter()
-            .filter_map(|chunk| chunk.reduce(Self::meld))
             .reduce(|a, b| a.meld(b).sift_min())
     }
 
@@ -168,3 +157,7 @@ impl<T> From<Pairing<T>> for Vec<T> {
 /// This one controls the soft heap's 'epsilon' corruption behaviour.
 // const EVERY: usize = 3;
 const CHUNKS: usize = 4;
+
+// Idea: look at my 'static visualisation' of sorting algorithms for various sequences of operations.
+// Also: add tests etc.
+// Also: actually use the soft pairing heap for my Schubert matroid.

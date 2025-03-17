@@ -29,14 +29,8 @@ Or perhaps use Python?  Easier for more people to read?
 */
 
 pub mod pairing;
+pub mod schubert;
 pub mod trees;
-
-use std::marker::PhantomData;
-
-pub struct FullSoftHeap<T: Ord> {
-    x: PhantomData<T>,
-    // root: Option<Box<Node<T>>>,
-}
 
 fn main() {
     println!("Hello, world!");
