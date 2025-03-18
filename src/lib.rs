@@ -37,6 +37,9 @@ use pyo3::prelude::*;
 /// Formats the sum of two numbers as string.
 #[pyfunction]
 fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
+    if a == 1 {
+        panic!("I don't like 1");
+    }
     Ok((a + b).to_string())
 }
 
@@ -44,7 +47,7 @@ fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
 /// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
 /// import the module.
 #[pymodule]
-fn string_sum(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn softheap(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
     Ok(())
 }
