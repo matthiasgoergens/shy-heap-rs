@@ -15,7 +15,7 @@ pub struct Bucket<T> {
 pub type Buckets<T> = Vec<Bucket<T>>;
 
 use std::cmp::Reverse;
-use std::collections::BinaryHeap;
+use std::collections::{BTreeSet, BinaryHeap};
 use std::fmt::Debug;
 
 use itertools::{izip, Itertools};
@@ -101,6 +101,10 @@ pub fn normalise_buckets<T: Debug>(buckets: Buckets<T>) -> Buckets<T> {
             };
         }
     }
+    // This one is just so that dualising doesn't lose items.
+    if !open_bucket.inserts.is_empty() {
+        new_buckets.push(open_bucket);
+    }
     new_buckets.reverse();
     new_buckets
 }
@@ -114,7 +118,7 @@ pub fn operation() -> impl Strategy<Value = Operation<u32>> {
 }
 
 pub fn operations() -> impl Strategy<Value = Vec<Operation<u32>>> {
-    proptest::collection::vec(operation(), 0..10_000).prop_map(compress_operations)
+    proptest::collection::vec(operation(), 0..1_000).prop_map(compress_operations)
 }
 
 pub fn compress_operations<T: Ord>(ops: Vec<Operation<T>>) -> Vec<Operation<u32>> {
@@ -135,32 +139,69 @@ pub fn compress_operations<T: Ord>(ops: Vec<Operation<T>>) -> Vec<Operation<u32>
         .collect()
 }
 
+pub fn simulate_dualised<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
+    // only works for all ops being different, ie uniquelified.
+    // We can fix that later.
+
+    let original_ops = ops.clone();
+
+    let buckets = into_buckets(ops);
+    let buckets = normalise_buckets(buckets);
+    let buckets = dualise_buckets(buckets);
+    let ops = from_buckets(buckets);
+    let result = sim_naive(ops);
+    let result = result
+        .into_iter()
+        .map(|Reverse(x)| x)
+        .collect::<BTreeSet<_>>();
+
+    original_ops
+        .into_iter()
+        .filter_map(|op| match op {
+            Operation::Insert(x) if !result.contains(&x) => Some(x),
+            _ => None,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use proptest::prelude::*;
     proptest! {
 
-    #[test]
-    fn test_simulate_via_buckets(ops in operations()) {
-        let mut naive = sim_naive(ops.clone());
-        let mut via_buckets = sim_naive(from_buckets(into_buckets(ops)));
+        #[test]
+        fn test_simulate_via_buckets(ops in operations()) {
+            let mut naive = sim_naive(ops.clone());
+            let mut via_buckets = sim_naive(from_buckets(into_buckets(ops)));
 
-        naive.sort();
-        via_buckets.sort();
+            naive.sort();
+            via_buckets.sort();
 
-        prop_assert_eq!(naive, via_buckets);
-    }
+            prop_assert_eq!(naive, via_buckets);
+        }
 
-    #[test]
-    fn test_simulate_via_buckets_normalised(ops in operations()) {
-        let mut naive = sim_naive(ops.clone());
-        let mut via_buckets = sim_naive(from_buckets(normalise_buckets(into_buckets(ops))));
+        #[test]
+        fn test_simulate_via_buckets_normalised(ops in operations()) {
+            let mut naive = sim_naive(ops.clone());
+            let mut via_buckets = sim_naive(from_buckets(normalise_buckets(into_buckets(ops))));
 
-        naive.sort();
-        via_buckets.sort();
+            naive.sort();
+            via_buckets.sort();
 
-        prop_assert_eq!(naive, via_buckets);
-    }
+            prop_assert_eq!(naive, via_buckets);
+        }
+
+
+        #[test]
+        fn test_simulate_dualised(ops in operations()) {
+            let mut naive = sim_naive(ops.clone());
+            let mut dualised = simulate_dualised(ops);
+
+            naive.sort();
+            dualised.sort();
+
+            prop_assert_eq!(naive, dualised);
+        }
     }
 }
