@@ -161,3 +161,39 @@ const CHUNKS: usize = 4;
 // Idea: look at my 'static visualisation' of sorting algorithms for various sequences of operations.
 // Also: add tests etc.
 // Also: actually use the soft pairing heap for my Schubert matroid.
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct Heap<T> {
+    pub root: Option<Pairing<T>>,
+}
+
+impl<T> Default for Heap<T> {
+    fn default() -> Self {
+        Self { root: None }
+    }
+}
+
+impl<T: Ord> Heap<T> {
+    pub fn insert(self, item: T) -> Self {
+        match self.root {
+            None => Self {
+                root: Some(Pairing::new(item)),
+            },
+            Some(root) => Self {
+                root: Some(root.insert(item)),
+            },
+        }
+    }
+
+    pub fn delete_min(self) -> Self {
+        Self {
+            root: self.root.and_then(Pairing::delete_min),
+        }
+    }
+}
+
+impl<T> From<Heap<T>> for Vec<T> {
+    fn from(Heap { root }: Heap<T>) -> Self {
+        root.map(Vec::from).unwrap_or_default()
+    }
+}

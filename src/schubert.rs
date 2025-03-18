@@ -155,6 +155,8 @@ pub fn simulate_dualised<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>
         .map(|Reverse(x)| x)
         .collect::<BTreeSet<_>>();
 
+    // You can do this one via indices and direct lookups, so you don't have to compare keys.
+    // That's important for getting our O(n) comparisons.
     original_ops
         .into_iter()
         .filter_map(|op| match op {
@@ -162,6 +164,19 @@ pub fn simulate_dualised<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>
             _ => None,
         })
         .collect()
+}
+
+use crate::pairing::Heap;
+
+pub fn simulate_pairing<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
+    let mut pairing = Heap::default();
+    for op in ops {
+        pairing = match op {
+            Operation::Insert(x) => pairing.insert(x),
+            Operation::DeleteMin => pairing.delete_min(),
+        };
+    }
+    Vec::from(pairing)
 }
 
 #[cfg(test)]
