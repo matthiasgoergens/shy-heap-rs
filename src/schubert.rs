@@ -16,9 +16,9 @@ pub type Buckets<T> = Vec<Bucket<T>>;
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
+use std::fmt::Debug;
 
-use proptest::prelude::{any, Just, Strategy};
-use proptest::prop_oneof;
+use proptest::prelude::{any, Strategy};
 
 pub fn sim_naive<T: Ord>(ops: Vec<Operation<T>>) -> Vec<T> {
     let mut h = BinaryHeap::new();
@@ -66,6 +66,18 @@ pub fn from_buckets<T>(buckets: Buckets<T>) -> Vec<Operation<T>> {
         .collect::<Vec<Operation<T>>>()
 }
 
+/// Strictly speaking, this one only works for normalised buckets.
+pub fn dualise_buckets<T: Ord>(buckets: Buckets<T>) -> Buckets<Reverse<T>> {
+    buckets
+        .into_iter()
+        .rev()
+        .map(|Bucket { inserts, deletes }| Bucket {
+            deletes: inserts.len().saturating_sub(deletes),
+            inserts: inserts.into_iter().map(Reverse).collect(),
+        })
+        .collect()
+}
+
 // def merge_blocks(blocks: List[Block]) -> List[Block]:
 // # Now we merge our blocks.
 // new_blocks = []
@@ -82,11 +94,42 @@ pub fn from_buckets<T>(buckets: Buckets<T>) -> Vec<Operation<T>> {
 //             block.pops = last_block.pops + block.pops
 // return new_blocks
 
-pub fn normalise_buckets<T>(buckets: Buckets<T>) -> Buckets<T> {
+pub fn normalise_buckets<T: Debug>(buckets: Buckets<T>) -> Buckets<T> {
+    let mut new_buckets = Vec::new();
+    let mut open_bucket = Bucket {
+        inserts: vec![],
+        deletes: 0,
+    };
+    for mut bucket in buckets.into_iter().rev() {
+        // combine buckets:
+        bucket.inserts.extend(open_bucket.inserts);
+        bucket.deletes += open_bucket.deletes;
+
+        // Check if combined bucket is open:
+        if bucket.inserts.len() <= bucket.deletes {
+            open_bucket = bucket;
+        } else {
+            new_buckets.push(bucket);
+            open_bucket = Bucket {
+                inserts: vec![],
+                deletes: 0,
+            };
+        }
+    }
+    new_buckets.reverse();
+    new_buckets
+}
+
+pub fn normalise_buckets1<T: Debug>(buckets: Buckets<T>) -> Buckets<T> {
+    eprintln!("normalise_buckets: {:?}", buckets);
+    // TODO: consider fixing the first bucket, if |inserts| <= deletes.
     let mut new_buckets = Vec::new();
     let mut buckets = buckets.into_iter();
+
     if let Some(mut last_bucket) = buckets.next() {
         for bucket in buckets {
+            // Oh, this one has to be a loop, because we might have to merge multiple buckets.
+            // Perhaps we should go from right to left instead?
             if bucket.inserts.len() > bucket.deletes {
                 new_buckets.push(last_bucket);
                 last_bucket = bucket;
@@ -98,6 +141,15 @@ pub fn normalise_buckets<T>(buckets: Buckets<T>) -> Buckets<T> {
 
         new_buckets.push(last_bucket);
     }
+    // invariant now: for each bucket, |inserts| > deletes.
+    // apart from the first one.
+
+    // invariant: now for all buckets |inserts| > deletes.
+    let new_buckets = new_buckets
+        .into_iter()
+        .filter(|bucket| bucket.inserts.len() > bucket.deletes)
+        .collect();
+    eprintln!("normalised_buckets: {:?}", new_buckets);
     new_buckets
 }
 
@@ -124,17 +176,35 @@ mod tests {
     // Check that the results are the same, up to reordering.
 
 
-        #[test]
-        fn test_simulate_three_ways(ops in operations()) {
-            let mut naive = sim_naive(ops.clone());
-            let buckets = into_buckets(ops.clone());
-            let normalised = normalise_buckets(buckets.clone());
-            let normalised_naive = sim_naive(from_buckets(normalised.clone()));
-            let buckets_normalised = normalise_buckets(buckets.clone());
-            let normalised_buckets_naive = sim_naive(from_buckets(buckets_normalised.clone()));
-            prop_assert_eq!(naive.clone(), normalised_naive);
-            prop_assert_eq!(naive, normalised_buckets_naive);
-        }
+    #[test]
+    fn test_simulate_via_buckets(ops in operations()) {
+        let mut naive = sim_naive(ops.clone());
+        let via_buckets = sim_naive(from_buckets(into_buckets(ops)));
+
+        prop_assert_eq!(naive, via_buckets);
+    }
+
+    #[test]
+    fn test_simulate_via_buckets_normalised(ops in operations()) {
+        let mut naive = sim_naive(ops.clone());
+        let via_buckets = sim_naive(from_buckets(normalise_buckets((into_buckets(ops)))));
+
+        prop_assert_eq!(naive, via_buckets);
+    }
+
+
+        // #[test]
+        // fn test_simulate_three_ways(ops in operations()) {
+        //     let mut naive = sim_naive(ops.clone());
+        //     let buckets = into_buckets(ops.clone());
+
+        //     let normalised = normalise_buckets(buckets.clone());
+        //     let normalised_naive = sim_naive(from_buckets(normalised.clone()));
+        //     let buckets_normalised = normalise_buckets(buckets.clone());
+        //     let normalised_buckets_naive = sim_naive(from_buckets(buckets_normalised.clone()));
+        //     prop_assert_eq!(naive.clone(), normalised_naive);
+        //     prop_assert_eq!(naive, normalised_buckets_naive);
+        // }
     }
 }
 
