@@ -262,24 +262,26 @@ pub fn undualise_ops<T>(ops: Vec<Operation<Reverse<T>>>) -> Vec<Operation<T>> {
 
 // result: definitely-in, definitely-out.
 pub fn linear<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
+    const CHUNKS: usize = 8;
     let inserts = count_inserts(&ops);
     let deletes = count_deletes(&ops);
     if ops.is_empty() {
         vec![]
     } else if deletes * 2 <= inserts {
         // primal
-        let (left_ops, guaranteed_in) = simulate_pairing(ops);
+        let (left_ops, guaranteed_in) = simulate_pairing::<CHUNKS, _>(ops);
         chain!(guaranteed_in, linear(left_ops)).collect()
     } else {
         // here we need to dualise.
         let dual_ops = dualise_ops(ops);
 
-        let (left_over_ops, _guaranteed_out) = simulate_pairing(dual_ops);
+        let (left_over_ops, _guaranteed_out) = simulate_pairing::<CHUNKS, _>(dual_ops);
         linear(undualise_ops(left_over_ops))
     }
 }
 
 pub fn linear_loop<T: Ord + std::fmt::Debug + Clone>(mut ops: Vec<Operation<T>>) -> Vec<T> {
+    const CHUNKS: usize = 8;
     let mut result = vec![];
 
     while !ops.is_empty() {
@@ -288,19 +290,17 @@ pub fn linear_loop<T: Ord + std::fmt::Debug + Clone>(mut ops: Vec<Operation<T>>)
 
         if deletes * 2 <= inserts {
             // primal
-            let (left_ops, guaranteed_in) = simulate_pairing(ops);
+            let (left_ops, guaranteed_in) = simulate_pairing::<CHUNKS, _>(ops);
             ops = left_ops;
             result.extend(guaranteed_in);
         } else {
             // here we need to dualise.
             let dual_ops = dualise_ops(ops);
 
-            let (left_over_ops, _guaranteed_out) = simulate_pairing(dual_ops);
+            let (left_over_ops, _guaranteed_out) = simulate_pairing::<CHUNKS, _>(dual_ops);
             ops = undualise_ops(left_over_ops);
         }
         assert!(
-            // Not sure if this is actually a bound we can hold.
-            // But I can prove 11/12, otherwise, because we lose either at least 1/6th of inserts or deletes.
             ops.len() <= (inserts + deletes) * 5 / 6,
         );
     }
@@ -320,7 +320,7 @@ pub fn linear_loop<T: Ord + std::fmt::Debug + Clone>(mut ops: Vec<Operation<T>>)
 // Now we have 1/6 uncorrupted to be kept.  And that results in losing at least 1/6 of deletes.
 
 /// The bool in the result mean 'definitely in the heap at the end'
-pub fn simulate_pairing<T: Ord + std::fmt::Debug + Clone>(
+pub fn simulate_pairing<const CHUNKS: usize, T: Ord + std::fmt::Debug + Clone>(
     ops: Vec<Operation<T>>,
 ) -> (Vec<Operation<T>>, Vec<T>) {
     let ops_extended = enumerate(&ops)
@@ -330,7 +330,7 @@ pub fn simulate_pairing<T: Ord + std::fmt::Debug + Clone>(
         })
         .collect::<Vec<_>>();
 
-    let mut pairing: Heap<8, (&T, usize)> = Heap::default();
+    let mut pairing: Heap<CHUNKS, (&T, usize)> = Heap::default();
     for op in ops_extended {
         pairing = match op {
             Operation::Insert(x) => pairing.insert(x),

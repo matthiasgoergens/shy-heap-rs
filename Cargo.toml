@@ -18,3 +18,7 @@ rand = "0.9.0"
 # to `use string_sum;` unless the "rlib" or "lib" crate type is also included, e.g.:
 # crate-type = ["cdylib", "rlib"]
 crate-type = ["cdylib", "rlib"]
+
+[profile.test]
+lto = "thin"
+opt-level = 3
