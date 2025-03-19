@@ -300,9 +300,7 @@ pub fn linear_loop<T: Ord + std::fmt::Debug + Clone>(mut ops: Vec<Operation<T>>)
             let (left_over_ops, _guaranteed_out) = simulate_pairing::<CHUNKS, _>(dual_ops);
             ops = undualise_ops(left_over_ops);
         }
-        assert!(
-            ops.len() <= (inserts + deletes) * 5 / 6,
-        );
+        assert!(ops.len() <= (inserts + deletes) * 5 / 6,);
     }
     result
 }

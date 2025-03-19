@@ -28,6 +28,7 @@ Or perhaps use Python?  Easier for more people to read?
 
 */
 
+pub mod lazy_pairing;
 pub mod pairing;
 pub mod schubert;
 pub mod trees;

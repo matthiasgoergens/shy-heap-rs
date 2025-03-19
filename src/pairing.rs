@@ -120,7 +120,9 @@ impl<const CHUNKS: usize, T: Ord> Pairing<CHUNKS, T> {
         }
     }
 
-    pub fn merge_children(items: Vec<Self>) -> Option<Self> {
+    /// This variant might be better in practice than `merge_children`,
+    /// but it's harder to analyse in theory.
+    pub fn merge_children_multipass(items: Vec<Self>) -> Option<Self> {
         Self::merge_as_binary_tree(
             items
                 .into_iter()
@@ -136,6 +138,28 @@ impl<const CHUNKS: usize, T: Ord> Pairing<CHUNKS, T> {
                     }
                 }),
         )
+    }
+
+    pub fn merge_children(items: Vec<Self>) -> Option<Self> {
+        // Conventional two-pass strategy, but with bigger chunks and corruption.
+
+        let first_pass: Vec<_> = items
+            .into_iter()
+            .chunks(CHUNKS)
+            .into_iter()
+            .map(Iterator::collect)
+            .filter_map(|chunk: Vec<_>| {
+                // Only corrupt full chunks.
+                if chunk.len() < CHUNKS {
+                    Self::merge_as_binary_tree(chunk)
+                } else {
+                    Self::merge_as_binary_tree(chunk).map(Pairing::corrupt)
+                }
+            })
+            .collect::<Vec<_>>();
+
+        // We need to reverse here, to implement the conventional two-pass strategy.
+        first_pass.into_iter().rev().reduce(Self::meld)
     }
 
     pub fn check_heap_property(&self) -> bool {
