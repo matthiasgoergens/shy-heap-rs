@@ -200,11 +200,10 @@ pub fn simulate_dualised<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>
         .collect()
 }
 
-pub fn simulate_pairing<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
-    // This one will only return a subset of the items in the real result.
-    // TODO: dualise, if subset is too small.
-    // And rerun in a loop, without the subset.
-    let mut pairing: Heap<8, T> = Heap::default();
+pub fn simulate_pairing_debug<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
+    // CHUNKS>=8 and EPS = 6 seem to work.
+    // Chunks>=6 and EPS=3 also seem to work.
+    let mut pairing: Heap<6, T> = Heap::default();
     let mut inserts_so_far = 0;
     for op in ops {
         pairing = match op {
@@ -226,7 +225,7 @@ pub fn simulate_pairing<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>
         // A very deep heap has very few possible permutations.  In the extreme of a linked list structure, only one possibility.
 
         // How does corruption play into this measure of information?
-        const EPS: usize = 6;
+        const EPS: usize = 3;
         assert!(
             inserts_so_far >= EPS * co,
             "{inserts_so_far} >= {EPS} * {co}; uncorrupted: {un}\n{pairing:?}"
@@ -269,13 +268,13 @@ pub fn linear<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T
         vec![]
     } else if deletes * 2 <= inserts {
         // primal
-        let (left_ops, guaranteed_in) = simulate_pairing_2(ops);
+        let (left_ops, guaranteed_in) = simulate_pairing(ops);
         chain!(guaranteed_in, linear(left_ops)).collect()
     } else {
         // here we need to dualise.
         let dual_ops = dualise_ops(ops);
 
-        let (left_over_ops, _guaranteed_out) = simulate_pairing_2(dual_ops);
+        let (left_over_ops, _guaranteed_out) = simulate_pairing(dual_ops);
         linear(undualise_ops(left_over_ops))
     }
 }
@@ -289,14 +288,14 @@ pub fn linear_loop<T: Ord + std::fmt::Debug + Clone>(mut ops: Vec<Operation<T>>)
 
         if deletes * 2 <= inserts {
             // primal
-            let (left_ops, guaranteed_in) = simulate_pairing_2(ops);
+            let (left_ops, guaranteed_in) = simulate_pairing(ops);
             ops = left_ops;
             result.extend(guaranteed_in);
         } else {
             // here we need to dualise.
             let dual_ops = dualise_ops(ops);
 
-            let (left_over_ops, _guaranteed_out) = simulate_pairing_2(dual_ops);
+            let (left_over_ops, _guaranteed_out) = simulate_pairing(dual_ops);
             ops = undualise_ops(left_over_ops);
         }
         assert!(
@@ -321,7 +320,7 @@ pub fn linear_loop<T: Ord + std::fmt::Debug + Clone>(mut ops: Vec<Operation<T>>)
 // Now we have 1/6 uncorrupted to be kept.  And that results in losing at least 1/6 of deletes.
 
 /// The bool in the result mean 'definitely in the heap at the end'
-pub fn simulate_pairing_2<T: Ord + std::fmt::Debug + Clone>(
+pub fn simulate_pairing<T: Ord + std::fmt::Debug + Clone>(
     ops: Vec<Operation<T>>,
 ) -> (Vec<Operation<T>>, Vec<T>) {
     let ops_extended = enumerate(&ops)
@@ -365,12 +364,12 @@ mod tests {
     proptest! {
         #[test]
         fn corruption_simple(ops in operations()) {
-            simulate_pairing(ops);
+            simulate_pairing_debug(ops);
         }
 
         #[test]
         fn corruption(ops in full_ops(10_000)) {
-            simulate_pairing(ops.0);
+            simulate_pairing_debug(ops.0);
         }
 
 
