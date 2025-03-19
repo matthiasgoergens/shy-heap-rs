@@ -16,21 +16,14 @@ impl<T> Pool<T> {
         Pool { item, count: 0 }
     }
 
-    pub fn pop(self) -> (Option<T>, Option<Self>) {
-        if self.count == 0 {
-            (Some(self.item), None)
-        } else {
-            (
-                None,
-                Some(Self {
-                    count: self.count - 1,
-                    ..self
-                }),
-            )
-        }
+    pub fn delete_one(self) -> Option<Self> {
+        self.count
+            .checked_sub(1)
+            .map(|count| Self { count, ..self })
     }
 
     pub fn merge(self, other: Self) -> Self {
+        // We assume that self.item <= other.item.
         Self {
             item: other.item,
             count: self.count + other.count + 1,
@@ -91,76 +84,58 @@ impl<T: Ord> Pairing<T> {
         self.meld(Self::new(item))
     }
 
-    pub fn sift_min(self) -> Self {
+    pub fn corrupt(self) -> Self {
         let Pairing { key, children } = self;
-        match Self::merge_pairs(children) {
+        match Self::merge_children(children) {
             None => Pairing::from(key),
             Some(pairing) => {
                 assert!(key.item <= pairing.key.item);
                 Pairing {
                     key: key.merge(pairing.key),
-                    ..pairing
+                    children: pairing.children,
                 }
             }
         }
     }
 
     pub fn delete_min(self) -> Option<Self> {
-        {
-            let Pairing { key, children } = self;
-            let (_popped, remainder) = key.pop();
-            match remainder {
-                None => Self::merge_pairs(children),
-                Some(key) => Some(Self { key, children }),
-            }
+        let Pairing { key, children } = self;
+        match key.delete_one() {
+            None => Self::merge_children(children),
+            Some(key) => Some(Self { key, children }),
         }
     }
 
-    pub fn merge_chunk(mut items: Vec<Self>) -> Option<Self> {
-        loop {
-            items = items
-                .into_iter()
-                .chunks(2)
-                .into_iter()
-                .filter_map(|pair| pair.reduce(Self::meld))
-                .collect();
-            if items.len() < 2 {
-                return items.into_iter().reduce(Self::meld);
-            }
-        }
-    }
-
-    pub fn merge_pairs_old(items: Vec<Self>) -> Option<Self> {
-        // Many other schemes are possible.
-        // As long as you corrupt O(children) elements,
-        // and not only at the very end.
-        items
+    pub fn merge_as_binary_tree<I: IntoIterator<Item = Self>>(items: I) -> Option<Self> {
+        let items: Vec<_> = items
             .into_iter()
-            // If you pick a power of two you get something nice here.
-            .chunks(CHUNKS)
+            .chunks(2)
             .into_iter()
-            .map(Iterator::collect)
-            .filter_map(Self::merge_chunk)
-            .reduce(|a, b| a.meld(b).sift_min())
-    }
-
-    pub fn merge_pairs(items: Vec<Self>) -> Option<Self> {
-        let chunks: Vec<_> = items
-            .into_iter()
-            .chunks(CHUNKS)
-            .into_iter()
-            .map(Iterator::collect::<Vec<_>>)
-            .filter_map(|chunk| {
-                // Only sift full chunks.
-                if chunk.len() < CHUNKS {
-                    Self::merge_chunk(chunk)
-                } else {
-                    Self::merge_chunk(chunk).map(Self::sift_min)
-                }
-            })
+            .filter_map(|pair| pair.reduce(Self::meld))
             .collect();
-        // Don't sift more.
-        Self::merge_chunk(chunks)
+        if items.len() < 2 {
+            items.into_iter().reduce(Self::meld)
+        } else {
+            Self::merge_as_binary_tree(items)
+        }
+    }
+
+    pub fn merge_children(items: Vec<Self>) -> Option<Self> {
+        Self::merge_as_binary_tree(
+            items
+                .into_iter()
+                .chunks(CHUNKS)
+                .into_iter()
+                .map(Iterator::collect)
+                .filter_map(|chunk: Vec<_>| {
+                    // Only corrupt full chunks.
+                    if chunk.len() < CHUNKS {
+                        Self::merge_as_binary_tree(chunk)
+                    } else {
+                        Self::merge_as_binary_tree(chunk).map(Pairing::corrupt)
+                    }
+                }),
+        )
     }
 
     pub fn check_heap_property(&self) -> bool {
