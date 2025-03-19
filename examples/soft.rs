@@ -1,6 +1,3 @@
-use softheap::pairing::{Heap, Pairing, Pool};
-use softheap::schubert::Operation;
-
 use rand::seq::SliceRandom;
 
 pub fn main() {
