@@ -1,4 +1,5 @@
 // Schubert matroids.
+use crate::pairing::Heap;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Operation<T> {
@@ -69,7 +70,7 @@ pub fn from_buckets<T>(buckets: Buckets<T>) -> Vec<Operation<T>> {
 }
 
 /// Strictly speaking, this one only works for normalised buckets.
-pub fn dualise_buckets<T: Ord>(buckets: Buckets<T>) -> Buckets<Reverse<T>> {
+pub fn dualise_buckets<T>(buckets: Buckets<T>) -> Buckets<Reverse<T>> {
     buckets
         .into_iter()
         .rev()
@@ -80,7 +81,7 @@ pub fn dualise_buckets<T: Ord>(buckets: Buckets<T>) -> Buckets<Reverse<T>> {
         .collect()
 }
 
-pub fn normalise_buckets<T: Debug>(buckets: Buckets<T>) -> Buckets<T> {
+pub fn normalise_buckets<T>(buckets: Buckets<T>) -> Buckets<T> {
     let mut new_buckets = Vec::new();
     let mut open_bucket = Bucket {
         inserts: vec![],
@@ -199,13 +200,11 @@ pub fn simulate_dualised<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>
         .collect()
 }
 
-use crate::pairing::{Heap, EPS};
-
 pub fn simulate_pairing<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
     // This one will only return a subset of the items in the real result.
     // TODO: dualise, if subset is too small.
     // And rerun in a loop, without the subset.
-    let mut pairing = Heap::default();
+    let mut pairing: Heap<8, T> = Heap::default();
     let mut inserts_so_far = 0;
     for op in ops {
         pairing = match op {
@@ -227,9 +226,10 @@ pub fn simulate_pairing<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>
         // A very deep heap has very few possible permutations.  In the extreme of a linked list structure, only one possibility.
 
         // How does corruption play into this measure of information?
+        const EPS: usize = 6;
         assert!(
             inserts_so_far >= EPS * co,
-            "{inserts_so_far} >= 3 * {co}; uncorrupted: {un}\n{pairing:?}"
+            "{inserts_so_far} >= {EPS} * {co}; uncorrupted: {un}\n{pairing:?}"
         );
     }
     Vec::from(pairing)
@@ -247,133 +247,112 @@ pub fn count_inserts<T>(ops: &[Operation<T>]) -> usize {
         .count()
 }
 
-// TODO: deal with dualising, and the necessary type wrangling.
+pub fn dualise_ops<T>(ops: Vec<Operation<T>>) -> Vec<Operation<Reverse<T>>> {
+    from_buckets(dualise_buckets(normalise_buckets(into_buckets(ops))))
+}
 
-// // result: definitely-in, definitely-out.
-// pub fn linear<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> (Vec<T>, Vec<T>) {
-//     // Bah, we need to deal with Reverse better.
-//     // We can't just keep stacking it, alas, the compiler doesn't like that.
-//     eprintln!("linear: {:?}", ops.len());
-//     let mut in_heap = vec![];
-//     let deletes = count_deletes(&ops);
-//     if deletes == ops.len() {
-//         (vec![], vec![])
-//     } else if deletes * 3 < ops.len() {
-//         let (left_ops, guaranteed_in) = simulate_pairing_2(ops);
-//         in_heap.extend(guaranteed_in);
-
-//         let (def_in, def_out) = linear(left_ops);
-
-//         in_heap.extend(def_in);
-//         (in_heap, def_out)
-//     } else {
-//         // here we need to dualise.
-//         let ops = from_buckets(dualise_buckets(normalise_buckets(into_buckets(ops))));
-//         let (def_in, def_out) = linear_d(ops);
-//         (def_out, def_in)
-//     }
-// }
+pub fn undualise_ops<T>(ops: Vec<Operation<Reverse<T>>>) -> Vec<Operation<T>> {
+    dualise_ops(ops)
+        .into_iter()
+        .map(|op| match op {
+            Operation::Insert(Reverse(Reverse(x))) => Operation::Insert(x),
+            Operation::DeleteMin => Operation::DeleteMin,
+        })
+        .collect::<Vec<_>>()
+}
 
 // result: definitely-in, definitely-out.
 pub fn linear<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
-    // Bah, we need to deal with Reverse better.
-    // We can't just keep stacking it, alas, the compiler doesn't like that.
-    eprintln!("linear: {:?}", ops.len());
     let inserts = count_inserts(&ops);
     let deletes = count_deletes(&ops);
     if ops.is_empty() {
         vec![]
     } else if deletes * 2 <= inserts {
         // primal
-        let mut in_heap = vec![];
         let (left_ops, guaranteed_in) = simulate_pairing_2(ops);
-        in_heap.extend(guaranteed_in);
-
-        in_heap.extend(linear(left_ops));
-        in_heap
+        chain!(guaranteed_in, linear(left_ops)).collect()
     } else {
         // here we need to dualise.
-        let ops = from_buckets(dualise_buckets(normalise_buckets(into_buckets(ops))));
+        let dual_ops = dualise_ops(ops);
 
-        let (left_ops_d, _guaranteed_in_d) = simulate_pairing_2(ops);
-        let left_ops: Vec<Operation<Reverse<Reverse<T>>>> =
-            from_buckets(dualise_buckets(normalise_buckets(into_buckets(left_ops_d))));
-        let left_ops: Vec<Operation<T>> = left_ops
-            .into_iter()
-            .map(|op| match op {
-                Operation::Insert(Reverse(Reverse(x))) => Operation::Insert(x),
-                Operation::DeleteMin => Operation::DeleteMin,
-            })
-            .collect::<Vec<_>>();
-        linear(left_ops)
+        let (left_over_ops, _guaranteed_out) = simulate_pairing_2(dual_ops);
+        linear(undualise_ops(left_over_ops))
     }
 }
 
-// // result: definitely-in, definitely-out.
-// pub fn linear_d<T: Ord + std::fmt::Debug + Clone>(
-//     ops: Vec<Operation<Reverse<T>>>,
-// ) -> (Vec<T>, Vec<T>) {
-//     eprintln!("linear_d: {:?}", ops.len());
-//     let mut in_heap = vec![];
-//     let deletes = count_deletes(&ops);
-//     if deletes == ops.len() {
-//         (vec![], vec![])
-//     } else if deletes * 3 < ops.len() {
-//         let (left_ops, guaranteed_in) = simulate_pairing_2(ops);
-//         in_heap.extend(guaranteed_in);
+pub fn linear_loop<T: Ord + std::fmt::Debug + Clone>(mut ops: Vec<Operation<T>>) -> Vec<T> {
+    let mut result = vec![];
 
-//         let (def_in, def_out) = linear_d(left_ops);
+    while !ops.is_empty() {
+        let inserts = count_inserts(&ops);
+        let deletes = count_deletes(&ops);
 
-//         let mut in_heap = in_heap.into_iter().map(|Reverse(x)| x).collect::<Vec<_>>();
-//         in_heap.extend(def_in);
+        if deletes * 2 <= inserts {
+            // primal
+            let (left_ops, guaranteed_in) = simulate_pairing_2(ops);
+            ops = left_ops;
+            result.extend(guaranteed_in);
+        } else {
+            // here we need to dualise.
+            let dual_ops = dualise_ops(ops);
 
-//         (in_heap, def_out)
-//     } else {
-//         // here we need to dualise.
-//         let ops = from_buckets(dualise_buckets(normalise_buckets(into_buckets(ops))));
-//         let ops = ops
-//             .into_iter()
-//             .map(|op| match op {
-//                 Operation::Insert(Reverse(Reverse(x))) => Operation::Insert(x),
-//                 Operation::DeleteMin => Operation::DeleteMin,
-//             })
-//             .collect::<Vec<_>>();
-//         let (def_in, def_out) = linear(ops);
-//         (def_out, def_in)
-//     }
-// }
+            let (left_over_ops, _guaranteed_out) = simulate_pairing_2(dual_ops);
+            ops = undualise_ops(left_over_ops);
+        }
+        assert!(
+            // Not sure if this is actually a bound we can hold.
+            // But I can prove 11/12, otherwise, because we lose either at least 1/6th of inserts or deletes.
+            ops.len() <= (inserts + deletes) * 5 / 6,
+        );
+    }
+    result
+}
 
-// This one will only return a subset of the items in the real result.
-// TODO: dualise, if subset is too small.
-// And rerun in a loop, without the subset.
+// inserts >= 3 * corrupted
+// uncorrupted = inserts - deleted - corrupted
+// deleted <= inserts / 2
+// corrupted <= inserts / 3
+// uncorrupted >= inserts - (inserts / 2) - (inserts / 3)
+// uncorrupted >= inserts / 6
+
+// Well, the above holds for primal.  For dual we have remove deletes instead.
+// inserts <= deletes / 2
+// deletes' = inserts - deletes
+// Now we have 1/6 uncorrupted to be kept.  And that results in losing at least 1/6 of deletes.
 
 /// The bool in the result mean 'definitely in the heap at the end'
 pub fn simulate_pairing_2<T: Ord + std::fmt::Debug + Clone>(
     ops: Vec<Operation<T>>,
 ) -> (Vec<Operation<T>>, Vec<T>) {
-    let mut ops_result = ops.clone().into_iter().map(Some).collect::<Vec<_>>();
-
-    let ops = enumerate(ops)
+    let ops_extended = enumerate(&ops)
         .map(|(i, op)| match op {
             Operation::Insert(x) => Operation::Insert((x, i)),
             Operation::DeleteMin => Operation::DeleteMin,
         })
         .collect::<Vec<_>>();
 
-    let mut pairing = Heap::default();
-    for op in ops {
+    let mut pairing: Heap<8, (&T, usize)> = Heap::default();
+    for op in ops_extended {
         pairing = match op {
             Operation::Insert(x) => pairing.insert(x),
             Operation::DeleteMin => pairing.delete_min(),
         };
     }
-    let left_over = Vec::from(pairing);
+    let left_over: Vec<usize> = Vec::from(pairing)
+        .into_iter()
+        .map(|(_x, i)| i)
+        .collect::<Vec<_>>();
+
     // TODO: we could prettify this one a bit.
+    let mut ops_result = ops.into_iter().map(Some).collect::<Vec<_>>();
     let mut result = vec![];
-    for (item, i) in left_over {
-        assert_eq!(ops_result[i], Some(Operation::Insert(item.clone())));
-        ops_result[i] = None;
-        result.push(item);
+    for i in left_over {
+        let op = ops_result[i].take();
+        if let Some(Operation::Insert(x)) = op {
+            result.push(x);
+        } else {
+            unreachable!();
+        }
     }
     (ops_result.into_iter().flatten().collect::<Vec<_>>(), result)
 }
@@ -429,14 +408,24 @@ mod tests {
             prop_assert_eq!(naive, dualised);
         }
         #[test]
-        fn test_via_pairing_heap(ops in operations()) {
-            let mut naive = sim_naive(ops.clone());
-            let mut pairing_in = linear(ops);
+        fn test_via_pairing_heap(ops in full_ops(10_000)) {
+            let mut naive = sim_naive(ops.0.clone());
+            let mut pairing_in = linear(ops.0.clone());
 
             naive.sort();
             pairing_in.sort();
 
-            prop_assert_eq!(naive, pairing_in);
+            prop_assert_eq!(&naive, &pairing_in);
+        }
+        #[test]
+        fn test_via_pairing_heap_loop(ops in full_ops(10_000)) {
+            let mut naive = sim_naive(ops.0.clone());
+            let mut pairing_in_2 = linear_loop(ops.0);
+
+            naive.sort();
+            pairing_in_2.sort();
+
+            prop_assert_eq!(&naive, &pairing_in_2);
         }
     }
 }

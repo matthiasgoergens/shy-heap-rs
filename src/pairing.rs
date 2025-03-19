@@ -32,12 +32,12 @@ impl<T> Pool<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct Pairing<T> {
+pub struct Pairing<const CHUNKS: usize, T> {
     pub key: Pool<T>,
-    pub children: Vec<Pairing<T>>,
+    pub children: Vec<Pairing<CHUNKS, T>>,
 }
 
-impl<T> From<Pool<T>> for Pairing<T> {
+impl<const CHUNKS: usize, T> From<Pool<T>> for Pairing<CHUNKS, T> {
     fn from(key: Pool<T>) -> Self {
         Self {
             key,
@@ -46,7 +46,7 @@ impl<T> From<Pool<T>> for Pairing<T> {
     }
 }
 
-impl<T> Pairing<T> {
+impl<const CHUNKS: usize, T> Pairing<CHUNKS, T> {
     pub fn new(item: T) -> Self {
         Self::from(Pool::new(item))
     }
@@ -69,8 +69,8 @@ impl<T> Pairing<T> {
     }
 }
 
-impl<T: Ord> Pairing<T> {
-    pub fn meld(self, other: Pairing<T>) -> Pairing<T> {
+impl<const CHUNKS: usize, T: Ord> Pairing<CHUNKS, T> {
+    pub fn meld(self, other: Pairing<CHUNKS, T>) -> Pairing<CHUNKS, T> {
         let (mut a, b) = if self.key.item < other.key.item {
             (self, other)
         } else {
@@ -146,8 +146,8 @@ impl<T: Ord> Pairing<T> {
 }
 
 // Get all non-corrupted elements still in the heap.
-impl<T> From<Pairing<T>> for Vec<T> {
-    fn from(pairing: Pairing<T>) -> Self {
+impl<const CHUNKS: usize, T> From<Pairing<CHUNKS, T>> for Vec<T> {
+    fn from(pairing: Pairing<CHUNKS, T>) -> Self {
         // Pre-order traversal.
         let mut items = vec![];
         let mut todo = VecDeque::from([pairing]);
@@ -163,29 +163,22 @@ impl<T> From<Pairing<T>> for Vec<T> {
     }
 }
 
-/// This one controls the soft heap's 'epsilon' corruption behaviour.
-// const EVERY: usize = 3;
-pub const CHUNKS: usize = 8;
-// Assert: inserts_so_far >= EPS * corrupted.
-// Ie, at most 1/EPS * inserts_so_far of the heap is corrupted.
-pub const EPS: usize = 3;
-
 // Idea: look at my 'static visualisation' of sorting algorithms for various sequences of operations.
 // Also: add tests etc.
 // Also: actually use the soft pairing heap for my Schubert matroid.
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct Heap<T> {
-    pub root: Option<Pairing<T>>,
+pub struct Heap<const CHUNKS: usize, T> {
+    pub root: Option<Pairing<CHUNKS, T>>,
 }
 
-impl<T> Default for Heap<T> {
+impl<const CHUNKS: usize, T> Default for Heap<CHUNKS, T> {
     fn default() -> Self {
         Self { root: None }
     }
 }
 
-impl<T: Ord> Heap<T> {
+impl<const CHUNKS: usize, T: Ord> Heap<CHUNKS, T> {
     pub fn insert(self, item: T) -> Self {
         match self.root {
             None => Self {
@@ -210,8 +203,8 @@ impl<T: Ord> Heap<T> {
     }
 }
 
-impl<T> From<Heap<T>> for Vec<T> {
-    fn from(Heap { root }: Heap<T>) -> Self {
+impl<const CHUNKS: usize, T> From<Heap<CHUNKS, T>> for Vec<T> {
+    fn from(Heap { root }: Heap<CHUNKS, T>) -> Self {
         root.map(Vec::from).unwrap_or_default()
     }
 }
