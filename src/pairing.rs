@@ -8,7 +8,7 @@ use itertools::Itertools;
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Pool<T> {
     pub item: T,
-    pub count: isize,
+    pub count: usize,
 }
 
 impl<T> Pool<T> {
@@ -17,8 +17,7 @@ impl<T> Pool<T> {
     }
 
     pub fn pop(self) -> (Option<T>, Option<Self>) {
-        assert!(self.count >= 0);
-        if self.count <= 0 {
+        if self.count == 0 {
             (Some(self.item), None)
         } else {
             (
@@ -57,6 +56,23 @@ impl<T> From<Pool<T>> for Pairing<T> {
 impl<T> Pairing<T> {
     pub fn new(item: T) -> Self {
         Self::from(Pool::new(item))
+    }
+
+    pub fn count_corrupted(&self) -> usize {
+        self.key.count
+            + self
+                .children
+                .iter()
+                .map(Pairing::count_corrupted)
+                .sum::<usize>()
+    }
+
+    pub fn count_uncorrupted(&self) -> usize {
+        1 + self
+            .children
+            .iter()
+            .map(Pairing::count_uncorrupted)
+            .sum::<usize>()
     }
 }
 
@@ -114,7 +130,7 @@ impl<T: Ord> Pairing<T> {
         }
     }
 
-    pub fn merge_pairs(items: Vec<Self>) -> Option<Self> {
+    pub fn merge_pairs_old(items: Vec<Self>) -> Option<Self> {
         // Many other schemes are possible.
         // As long as you corrupt O(children) elements,
         // and not only at the very end.
@@ -126,6 +142,25 @@ impl<T: Ord> Pairing<T> {
             .map(Iterator::collect)
             .filter_map(Self::merge_chunk)
             .reduce(|a, b| a.meld(b).sift_min())
+    }
+
+    pub fn merge_pairs(items: Vec<Self>) -> Option<Self> {
+        let chunks: Vec<_> = items
+            .into_iter()
+            .chunks(CHUNKS)
+            .into_iter()
+            .map(Iterator::collect::<Vec<_>>)
+            .filter_map(|chunk| {
+                // Only sift full chunks.
+                if chunk.len() < CHUNKS {
+                    Self::merge_chunk(chunk)
+                } else {
+                    Self::merge_chunk(chunk).map(Self::sift_min)
+                }
+            })
+            .collect();
+        // Don't sift more.
+        Self::merge_chunk(chunks)
     }
 
     pub fn check_heap_property(&self) -> bool {
@@ -143,10 +178,9 @@ impl<T> From<Pairing<T>> for Vec<T> {
         let mut todo = VecDeque::from([pairing]);
         while let Some(pairing) = todo.pop_front() {
             let Pairing {
-                key: Pool { item, count },
+                key: Pool { item, count: _ },
                 children,
             } = pairing;
-            assert!(count >= 0);
             todo.extend(children);
             items.push(item);
         }
@@ -156,7 +190,10 @@ impl<T> From<Pairing<T>> for Vec<T> {
 
 /// This one controls the soft heap's 'epsilon' corruption behaviour.
 // const EVERY: usize = 3;
-const CHUNKS: usize = 4;
+pub const CHUNKS: usize = 8;
+// Assert: inserts_so_far >= EPS * corrupted.
+// Ie, at most 1/EPS * inserts_so_far of the heap is corrupted.
+pub const EPS: usize = 3;
 
 // Idea: look at my 'static visualisation' of sorting algorithms for various sequences of operations.
 // Also: add tests etc.
@@ -189,6 +226,12 @@ impl<T: Ord> Heap<T> {
         Self {
             root: self.root.and_then(Pairing::delete_min),
         }
+    }
+    pub fn count_corrupted(&self) -> usize {
+        self.root.as_ref().map_or(0, Pairing::count_corrupted)
+    }
+    pub fn count_uncorrupted(&self) -> usize {
+        self.root.as_ref().map_or(0, Pairing::count_uncorrupted)
     }
 }
 
