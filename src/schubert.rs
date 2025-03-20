@@ -1,5 +1,5 @@
 // Schubert matroids.
-use crate::pairing::Heap;
+use crate::{index_order::SliceIndexOrdering, pairing::SoftHeap};
 use std::cmp::Reverse;
 use std::fmt::Debug;
 use std::iter::repeat_with;
@@ -215,15 +215,15 @@ pub fn linear_loop<T: Ord + std::fmt::Debug + Clone>(mut ops: Vec<Operation<T>>)
 pub fn simulate_pairing<const CHUNKS: usize, T: Ord + std::fmt::Debug + Clone>(
     ops: Vec<Operation<T>>,
 ) -> (Vec<Operation<T>>, Vec<T>) {
-    let ops_extended = enumerate(&ops)
+    let ops_with_index = enumerate(&ops)
         .map(|(i, op)| match op {
             Operation::Insert(x) => Operation::Insert((x, i)),
             Operation::DeleteMin => Operation::DeleteMin,
         })
         .collect::<Vec<_>>();
 
-    let mut pairing: Heap<CHUNKS, (&T, usize)> = Heap::default();
-    for op in ops_extended {
+    let mut pairing: SoftHeap<CHUNKS, _> = SoftHeap::default();
+    for op in ops_with_index {
         pairing = match op {
             Operation::Insert(x) => pairing.insert(x),
             Operation::DeleteMin => pairing.delete_min(),
@@ -232,6 +232,38 @@ pub fn simulate_pairing<const CHUNKS: usize, T: Ord + std::fmt::Debug + Clone>(
     let left_over: Vec<usize> = Vec::from(pairing)
         .into_iter()
         .map(|(_x, i)| i)
+        .collect::<Vec<_>>();
+
+    // TODO: we could prettify this one a bit.
+    let mut ops_result = ops.into_iter().map(Some).collect::<Vec<_>>();
+    let mut result = vec![];
+    for i in left_over {
+        let op = ops_result[i].take();
+        if let Some(Operation::Insert(x)) = op {
+            result.push(x);
+        } else {
+            unreachable!();
+        }
+    }
+    (ops_result.into_iter().flatten().collect::<Vec<_>>(), result)
+}
+
+/// The bool in the result mean 'definitely in the heap at the end'
+pub fn simulate_pairing_index_order<const CHUNKS: usize, T: Ord + std::fmt::Debug + Clone>(
+    ops: Vec<Operation<T>>,
+) -> (Vec<Operation<T>>, Vec<T>) {
+    let index_order = SliceIndexOrdering::new(&ops);
+
+    let mut pairing: SoftHeap<CHUNKS, _> = SoftHeap::default();
+    for (i, op) in enumerate(&ops) {
+        pairing = match op {
+            Operation::Insert(_x) => pairing.insert(index_order.index(i)),
+            Operation::DeleteMin => pairing.delete_min(),
+        };
+    }
+    let left_over: Vec<usize> = Vec::from(pairing)
+        .into_iter()
+        .map(|x| x.index)
         .collect::<Vec<_>>();
 
     // TODO: we could prettify this one a bit.
@@ -380,7 +412,7 @@ mod tests {
     ) -> Vec<T> {
         // CHUNKS>=8 and EPS = 6 seem to work.
         // Chunks>=6 and EPS=3 also seem to work.
-        let mut pairing: Heap<8, T> = Heap::default();
+        let mut pairing: SoftHeap<8, T> = SoftHeap::default();
         let mut inserts_so_far = 0;
         for op in ops {
             pairing = match op {

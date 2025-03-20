@@ -203,17 +203,17 @@ impl<const CHUNKS: usize, T> From<Pairing<CHUNKS, T>> for Vec<T> {
 // Also: actually use the soft pairing heap for my Schubert matroid.
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct Heap<const CHUNKS: usize, T> {
+pub struct SoftHeap<const CHUNKS: usize, T> {
     pub root: Option<Pairing<CHUNKS, T>>,
 }
 
-impl<const CHUNKS: usize, T> Default for Heap<CHUNKS, T> {
+impl<const CHUNKS: usize, T> Default for SoftHeap<CHUNKS, T> {
     fn default() -> Self {
         Self { root: None }
     }
 }
 
-impl<const CHUNKS: usize, T: Ord> Heap<CHUNKS, T> {
+impl<const CHUNKS: usize, T: Ord> SoftHeap<CHUNKS, T> {
     #[must_use]
     pub fn insert(self, item: T) -> Self {
         match self.root {
@@ -240,8 +240,8 @@ impl<const CHUNKS: usize, T: Ord> Heap<CHUNKS, T> {
     }
 }
 
-impl<const CHUNKS: usize, T> From<Heap<CHUNKS, T>> for Vec<T> {
-    fn from(Heap { root }: Heap<CHUNKS, T>) -> Self {
+impl<const CHUNKS: usize, T> From<SoftHeap<CHUNKS, T>> for Vec<T> {
+    fn from(SoftHeap { root }: SoftHeap<CHUNKS, T>) -> Self {
         root.map(Vec::from).unwrap_or_default()
     }
 }

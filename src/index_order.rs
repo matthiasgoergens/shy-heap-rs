@@ -11,25 +11,12 @@ impl<'a, T: Ord> SliceIndexOrdering<'a, T> {
     }
 
     /// Creates an index wrapper that can be used for comparison.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index is out of bounds (if `index >= self.slice.len()`).
     #[must_use]
     pub fn index(&'a self, index: usize) -> IndexWrapper<'a, T> {
-        assert!(index < self.slice.len(), "Index out of bounds");
         IndexWrapper {
             ordering: self,
             index,
         }
-    }
-
-    /// Converts a collection of indices into a vector of wrappers.
-    pub fn wrap_indices(
-        &'a self,
-        indices: impl IntoIterator<Item = usize>,
-    ) -> Vec<IndexWrapper<'a, T>> {
-        indices.into_iter().map(|idx| self.index(idx)).collect()
     }
 }
 
