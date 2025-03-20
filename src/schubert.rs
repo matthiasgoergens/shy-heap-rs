@@ -18,7 +18,7 @@ pub type Buckets<T> = Vec<Bucket<T>>;
 use std::cmp::{min, Reverse};
 use std::collections::{BTreeSet, BinaryHeap};
 use std::fmt::Debug;
-use std::iter::repeat;
+use std::iter::{repeat, repeat_with};
 
 use itertools::{chain, enumerate, izip, Itertools};
 use proptest::prelude::{any, Strategy};
@@ -53,19 +53,34 @@ pub fn into_buckets<T>(ops: Vec<Operation<T>>) -> Buckets<T> {
         .collect::<Vec<Bucket<T>>>()
 }
 
+impl<T> From<Bucket<T>> for Vec<Operation<T>> {
+    fn from(bucket: Bucket<T>) -> Self {
+        bucket.into_iter().collect()
+    }
+}
+
+impl<T> IntoIterator for Bucket<T> {
+    type Item = Operation<T>;
+    type IntoIter = std::iter::Chain<
+        std::iter::Map<std::vec::IntoIter<T>, fn(T) -> Operation<T>>,
+        std::iter::Take<std::iter::RepeatWith<fn() -> Operation<T>>>,
+    >;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let insert_fn: fn(T) -> Operation<T> = Operation::Insert;
+        let delete_fn: fn() -> Operation<T> = || Operation::DeleteMin;
+
+        chain!(
+            self.inserts.into_iter().map(insert_fn),
+            repeat_with(delete_fn).take(self.deletes)
+        )
+    }
+}
+
 pub fn from_buckets<T>(buckets: Buckets<T>) -> Vec<Operation<T>> {
     buckets
         .into_iter()
-        .flat_map(|bucket| {
-            let mut ops = Vec::new();
-            for x in bucket.inserts {
-                ops.push(Operation::Insert(x));
-            }
-            for _ in 0..bucket.deletes {
-                ops.push(Operation::DeleteMin);
-            }
-            ops
-        })
+        .flat_map(IntoIterator::into_iter)
         .collect::<Vec<Operation<T>>>()
 }
 
@@ -76,7 +91,7 @@ pub fn dualise_buckets<T>(buckets: Buckets<T>) -> Buckets<Reverse<T>> {
         .rev()
         .map(|Bucket { inserts, deletes }| Bucket {
             deletes: inserts.len().saturating_sub(deletes),
-            inserts: inserts.into_iter().map(Reverse).collect(),
+            inserts: inserts.into_iter().rev().map(Reverse).collect(),
         })
         .collect()
 }

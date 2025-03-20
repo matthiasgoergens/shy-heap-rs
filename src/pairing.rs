@@ -16,6 +16,7 @@ impl<T> Pool<T> {
         Pool { item, count: 0 }
     }
 
+    #[must_use]
     pub fn delete_one(self) -> Option<Self> {
         self.count
             .checked_sub(1)
