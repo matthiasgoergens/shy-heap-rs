@@ -1,10 +1,24 @@
 // Schubert matroids.
 use crate::pairing::Heap;
+use std::cmp::Reverse;
+use std::fmt::Debug;
+use std::iter::repeat_with;
+
+use itertools::{chain, enumerate};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Operation<T> {
     Insert(T),
     DeleteMin,
+}
+
+impl<T> Operation<T> {
+    pub fn map<U>(self, f: fn(T) -> U) -> Operation<U> {
+        match self {
+            Operation::Insert(x) => Operation::Insert(f(x)),
+            Operation::DeleteMin => Operation::DeleteMin,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -15,34 +29,9 @@ pub struct Bucket<T> {
 
 pub type Buckets<T> = Vec<Bucket<T>>;
 
-use std::cmp::{min, Reverse};
-use std::collections::{BTreeSet, BinaryHeap};
-use std::fmt::Debug;
-use std::iter::{repeat, repeat_with};
-
-use itertools::{chain, enumerate, izip, Itertools};
-use proptest::prelude::{any, Strategy};
-
-#[must_use]
-pub fn sim_naive<T: Ord>(ops: Vec<Operation<T>>) -> Vec<T> {
-    let mut h = BinaryHeap::new();
-    for op in ops {
+impl<T> From<Operation<T>> for Bucket<T> {
+    fn from(op: Operation<T>) -> Self {
         match op {
-            Operation::Insert(x) => {
-                h.push(Reverse(x));
-            }
-            Operation::DeleteMin => {
-                h.pop();
-            }
-        }
-    }
-    h.into_iter().map(|Reverse(x)| x).collect::<Vec<_>>()
-}
-
-#[must_use]
-pub fn into_buckets<T>(ops: Vec<Operation<T>>) -> Buckets<T> {
-    ops.into_iter()
-        .map(|op| match op {
             Operation::Insert(x) => Bucket {
                 inserts: vec![x],
                 deletes: 0,
@@ -51,14 +40,15 @@ pub fn into_buckets<T>(ops: Vec<Operation<T>>) -> Buckets<T> {
                 inserts: vec![],
                 deletes: 1,
             },
-        })
-        .collect::<Vec<Bucket<T>>>()
+        }
+    }
 }
 
-impl<T> From<Bucket<T>> for Vec<Operation<T>> {
-    fn from(bucket: Bucket<T>) -> Self {
-        bucket.into_iter().collect()
-    }
+#[must_use]
+pub fn into_buckets<T>(ops: Vec<Operation<T>>) -> Buckets<T> {
+    ops.into_iter()
+        .map(Bucket::from)
+        .collect::<Vec<Bucket<T>>>()
 }
 
 impl<T> IntoIterator for Bucket<T> {
@@ -130,142 +120,6 @@ pub fn normalise_buckets<T>(buckets: Buckets<T>) -> Buckets<T> {
     new_buckets
 }
 
-#[allow(clippy::cast_sign_loss)]
-pub fn operation() -> impl Strategy<Value = Operation<u32>> {
-    any::<Option<u32>>().prop_map(|x| match x {
-        Some(x) => Operation::Insert(x),
-        None => Operation::DeleteMin,
-    })
-}
-
-pub fn operations() -> impl Strategy<Value = Vec<Operation<u32>>> {
-    proptest::collection::vec(operation(), 0..20_000).prop_map(compress_operations)
-}
-
-pub struct Ops(pub Vec<Operation<u32>>);
-impl Debug for Ops {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for op in &self.0 {
-            match op {
-                Operation::Insert(x) => write!(f, "{x} ")?,
-                Operation::DeleteMin => write!(f, "_ ")?,
-            }
-        }
-        Ok(())
-    }
-}
-
-pub fn full_ops(n: u32) -> impl Strategy<Value = Ops> {
-    let l = (0..n, 0..n)
-        .prop_map(|(n, k)| {
-            let k = min(n, k) as usize;
-            chain!(
-                repeat(Operation::DeleteMin).take(k),
-                (0..n).map(Operation::Insert)
-            )
-            .collect::<Vec<Operation<u32>>>()
-        })
-        .prop_shuffle();
-    (l, 0..10 * n)
-        .prop_map(|(mut ops, n)| {
-            ops.truncate(n as usize);
-            ops
-        })
-        .prop_map(Ops)
-}
-
-#[must_use]
-pub fn compress_operations<T: Ord>(ops: Vec<Operation<T>>) -> Vec<Operation<u32>> {
-    izip!(ops, 0..)
-        .sorted()
-        .zip(0..)
-        .map(|((op, i), o)| {
-            (
-                i,
-                match op {
-                    Operation::Insert(_) => Operation::Insert(o),
-                    Operation::DeleteMin => Operation::DeleteMin,
-                },
-            )
-        })
-        .sorted()
-        .map(|(_, op)| op)
-        .collect()
-}
-
-#[must_use]
-pub fn simulate_dualised<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
-    // only works for all ops being different, ie uniquelified.
-    // We can fix that later.
-
-    let original_ops = ops.clone();
-
-    let buckets = into_buckets(ops);
-    let buckets = normalise_buckets(buckets);
-    let buckets = dualise_buckets(buckets);
-    let ops = from_buckets(buckets);
-    let result = sim_naive(ops);
-    let result = result
-        .into_iter()
-        .map(|Reverse(x)| x)
-        .collect::<BTreeSet<_>>();
-
-    // You can do this one via indices and direct lookups, so you don't have to compare keys.
-    // That's important for getting our O(n) comparisons.
-    original_ops
-        .into_iter()
-        .filter_map(|op| match op {
-            Operation::Insert(x) if !result.contains(&x) => Some(x),
-            _ => None,
-        })
-        .collect()
-}
-
-#[must_use]
-/// Simulates the operations using a pairing heap and performs debug assertions.
-///
-/// # Panics
-///
-/// Panics if the number of insertions is less than `EPS * corrupted_elements`,
-/// where `corrupted_elements` is the count of corrupted elements in the heap.
-///
-/// Ie when the soft heap corruption guarantee is violated.
-pub fn simulate_pairing_debug<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
-    // CHUNKS>=8 and EPS = 6 seem to work.
-    // Chunks>=6 and EPS=3 also seem to work.
-    let mut pairing: Heap<8, T> = Heap::default();
-    let mut inserts_so_far = 0;
-    for op in ops {
-        pairing = match op {
-            Operation::Insert(x) => {
-                inserts_so_far += 1;
-                pairing.insert(x)
-            }
-            Operation::DeleteMin => pairing.delete_min(),
-        };
-        let un = pairing.count_uncorrupted();
-        let co = pairing.count_corrupted();
-        // With a bit of care, we should be able to guarantee a relationship between uncorrupted * epsilon >= corrupted,
-        // in our setting, because we do not allow removal of arbitrary elements.  We only allow removal of the smallest,
-        // and corruption can not travel downwards, in some sense, and only delete_min introduced new corruption.
-        // TODO: btw, we thought of tracking _information_ and proving something about that as an invariant.
-        // 'information' measures given the structure of the heap and the heap property, how many different permutations
-        // of the items are compatible with what we know.
-        // A very flat heap has lots of possible permutations.
-        // A very deep heap has very few possible permutations.  In the extreme of a linked list structure, only one possibility.
-
-        // How does corruption play into this measure of information?
-        {
-            const EPS: usize = 6;
-            assert!(
-                inserts_so_far >= EPS * co,
-                "{inserts_so_far} >= {EPS} * {co}; uncorrupted: {un}\n{pairing:?}"
-            );
-        }
-    }
-    Vec::from(pairing)
-}
-
 pub fn count_deletes<T>(ops: &[Operation<T>]) -> usize {
     ops.iter()
         .filter(|op| matches!(op, Operation::DeleteMin))
@@ -287,10 +141,7 @@ pub fn dualise_ops<T>(ops: Vec<Operation<T>>) -> Vec<Operation<Reverse<T>>> {
 pub fn undualise_ops<T>(ops: Vec<Operation<Reverse<T>>>) -> Vec<Operation<T>> {
     dualise_ops(ops)
         .into_iter()
-        .map(|op| match op {
-            Operation::Insert(Reverse(Reverse(x))) => Operation::Insert(x),
-            Operation::DeleteMin => Operation::DeleteMin,
-        })
+        .map(|op| op.map(|Reverse(Reverse(x))| x))
         .collect::<Vec<_>>()
 }
 
@@ -400,7 +251,167 @@ pub fn simulate_pairing<const CHUNKS: usize, T: Ord + std::fmt::Debug + Clone>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use itertools::{izip, Itertools};
     use proptest::prelude::*;
+    use proptest::prelude::{any, Strategy};
+    use std::cmp::min;
+    use std::collections::{BTreeSet, BinaryHeap};
+    use std::iter::repeat;
+
+    pub struct Ops(pub Vec<Operation<u32>>);
+
+    impl Debug for Ops {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            for op in &self.0 {
+                match op {
+                    Operation::Insert(x) => write!(f, "{x} ")?,
+                    Operation::DeleteMin => write!(f, "_ ")?,
+                }
+            }
+            Ok(())
+        }
+    }
+
+    pub fn full_ops(n: u32) -> impl Strategy<Value = Ops> {
+        let l = (0..n, 0..n)
+            .prop_map(|(n, k)| {
+                let k = min(n, k) as usize;
+                chain!(
+                    repeat(Operation::DeleteMin).take(k),
+                    (0..n).map(Operation::Insert)
+                )
+                .collect::<Vec<Operation<u32>>>()
+            })
+            .prop_shuffle();
+        (l, 0..10 * n)
+            .prop_map(|(mut ops, n)| {
+                ops.truncate(n as usize);
+                ops
+            })
+            .prop_map(Ops)
+    }
+
+    #[must_use]
+    pub fn compress_operations<T: Ord>(ops: Vec<Operation<T>>) -> Vec<Operation<u32>> {
+        izip!(ops, 0..)
+            .sorted()
+            .zip(0..)
+            .map(|((op, i), o)| {
+                (
+                    i,
+                    match op {
+                        Operation::Insert(_) => Operation::Insert(o),
+                        Operation::DeleteMin => Operation::DeleteMin,
+                    },
+                )
+            })
+            .sorted()
+            .map(|(_, op)| op)
+            .collect()
+    }
+
+    #[allow(clippy::cast_sign_loss)]
+    pub fn operation() -> impl Strategy<Value = Operation<u32>> {
+        any::<Option<u32>>().prop_map(|x| match x {
+            Some(x) => Operation::Insert(x),
+            None => Operation::DeleteMin,
+        })
+    }
+
+    pub fn operations() -> impl Strategy<Value = Vec<Operation<u32>>> {
+        proptest::collection::vec(operation(), 0..20_000).prop_map(compress_operations)
+    }
+
+    #[must_use]
+    pub fn sim_naive<T: Ord>(ops: Vec<Operation<T>>) -> Vec<T> {
+        let mut h = BinaryHeap::new();
+        for op in ops {
+            match op {
+                Operation::Insert(x) => {
+                    h.push(Reverse(x));
+                }
+                Operation::DeleteMin => {
+                    h.pop();
+                }
+            }
+        }
+        h.into_iter().map(|Reverse(x)| x).collect::<Vec<_>>()
+    }
+
+    #[must_use]
+    pub fn simulate_dualised<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
+        // only works for all ops being different, ie uniquelified.
+        // We can fix that later.
+
+        let original_ops = ops.clone();
+
+        let buckets = into_buckets(ops);
+        let buckets = normalise_buckets(buckets);
+        let buckets = dualise_buckets(buckets);
+        let ops = from_buckets(buckets);
+        let result = sim_naive(ops);
+        let result = result
+            .into_iter()
+            .map(|Reverse(x)| x)
+            .collect::<BTreeSet<_>>();
+
+        // You can do this one via indices and direct lookups, so you don't have to compare keys.
+        // That's important for getting our O(n) comparisons.
+        original_ops
+            .into_iter()
+            .filter_map(|op| match op {
+                Operation::Insert(x) if !result.contains(&x) => Some(x),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[must_use]
+    /// Simulates the operations using a pairing heap and performs debug assertions.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of insertions is less than `EPS * corrupted_elements`,
+    /// where `corrupted_elements` is the count of corrupted elements in the heap.
+    ///
+    /// Ie when the soft heap corruption guarantee is violated.
+    pub fn simulate_pairing_debug<T: Ord + std::fmt::Debug + Clone>(
+        ops: Vec<Operation<T>>,
+    ) -> Vec<T> {
+        // CHUNKS>=8 and EPS = 6 seem to work.
+        // Chunks>=6 and EPS=3 also seem to work.
+        let mut pairing: Heap<8, T> = Heap::default();
+        let mut inserts_so_far = 0;
+        for op in ops {
+            pairing = match op {
+                Operation::Insert(x) => {
+                    inserts_so_far += 1;
+                    pairing.insert(x)
+                }
+                Operation::DeleteMin => pairing.delete_min(),
+            };
+            let un = pairing.count_uncorrupted();
+            let co = pairing.count_corrupted();
+            // With a bit of care, we should be able to guarantee a relationship between uncorrupted * epsilon >= corrupted,
+            // in our setting, because we do not allow removal of arbitrary elements.  We only allow removal of the smallest,
+            // and corruption can not travel downwards, in some sense, and only delete_min introduced new corruption.
+            // TODO: btw, we thought of tracking _information_ and proving something about that as an invariant.
+            // 'information' measures given the structure of the heap and the heap property, how many different permutations
+            // of the items are compatible with what we know.
+            // A very flat heap has lots of possible permutations.
+            // A very deep heap has very few possible permutations.  In the extreme of a linked list structure, only one possibility.
+
+            // How does corruption play into this measure of information?
+            {
+                const EPS: usize = 6;
+                assert!(
+                    inserts_so_far >= EPS * co,
+                    "{inserts_so_far} >= {EPS} * {co}; uncorrupted: {un}\n{pairing:?}"
+                );
+            }
+        }
+        Vec::from(pairing)
+    }
 
     proptest! {
         #[test]
