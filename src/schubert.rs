@@ -23,6 +23,7 @@ use std::iter::{repeat, repeat_with};
 use itertools::{chain, enumerate, izip, Itertools};
 use proptest::prelude::{any, Strategy};
 
+#[must_use]
 pub fn sim_naive<T: Ord>(ops: Vec<Operation<T>>) -> Vec<T> {
     let mut h = BinaryHeap::new();
     for op in ops {
@@ -38,6 +39,7 @@ pub fn sim_naive<T: Ord>(ops: Vec<Operation<T>>) -> Vec<T> {
     h.into_iter().map(|Reverse(x)| x).collect::<Vec<_>>()
 }
 
+#[must_use]
 pub fn into_buckets<T>(ops: Vec<Operation<T>>) -> Buckets<T> {
     ops.into_iter()
         .map(|op| match op {
@@ -85,6 +87,7 @@ pub fn from_buckets<T>(buckets: Buckets<T>) -> Vec<Operation<T>> {
 }
 
 /// Strictly speaking, this one only works for normalised buckets.
+#[must_use]
 pub fn dualise_buckets<T>(buckets: Buckets<T>) -> Buckets<Reverse<T>> {
     buckets
         .into_iter()
@@ -96,6 +99,7 @@ pub fn dualise_buckets<T>(buckets: Buckets<T>) -> Buckets<Reverse<T>> {
         .collect()
 }
 
+#[must_use]
 pub fn normalise_buckets<T>(buckets: Buckets<T>) -> Buckets<T> {
     let mut new_buckets = Vec::new();
     let mut open_bucket = Bucket {
@@ -143,7 +147,7 @@ impl Debug for Ops {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for op in &self.0 {
             match op {
-                Operation::Insert(x) => write!(f, "{} ", x)?,
+                Operation::Insert(x) => write!(f, "{x} ")?,
                 Operation::DeleteMin => write!(f, "_ ")?,
             }
         }
@@ -170,6 +174,7 @@ pub fn full_ops(n: u32) -> impl Strategy<Value = Ops> {
         .prop_map(Ops)
 }
 
+#[must_use]
 pub fn compress_operations<T: Ord>(ops: Vec<Operation<T>>) -> Vec<Operation<u32>> {
     izip!(ops, 0..)
         .sorted()
@@ -188,6 +193,7 @@ pub fn compress_operations<T: Ord>(ops: Vec<Operation<T>>) -> Vec<Operation<u32>
         .collect()
 }
 
+#[must_use]
 pub fn simulate_dualised<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
     // only works for all ops being different, ie uniquelified.
     // We can fix that later.
@@ -215,6 +221,15 @@ pub fn simulate_dualised<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>
         .collect()
 }
 
+#[must_use]
+/// Simulates the operations using a pairing heap and performs debug assertions.
+///
+/// # Panics
+///
+/// Panics if the number of insertions is less than `EPS * corrupted_elements`,
+/// where `corrupted_elements` is the count of corrupted elements in the heap.
+///
+/// Ie when the soft heap corruption guarantee is violated.
 pub fn simulate_pairing_debug<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
     // CHUNKS>=8 and EPS = 6 seem to work.
     // Chunks>=6 and EPS=3 also seem to work.
@@ -240,11 +255,13 @@ pub fn simulate_pairing_debug<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operati
         // A very deep heap has very few possible permutations.  In the extreme of a linked list structure, only one possibility.
 
         // How does corruption play into this measure of information?
-        const EPS: usize = 6;
-        assert!(
-            inserts_so_far >= EPS * co,
-            "{inserts_so_far} >= {EPS} * {co}; uncorrupted: {un}\n{pairing:?}"
-        );
+        {
+            const EPS: usize = 6;
+            assert!(
+                inserts_so_far >= EPS * co,
+                "{inserts_so_far} >= {EPS} * {co}; uncorrupted: {un}\n{pairing:?}"
+            );
+        }
     }
     Vec::from(pairing)
 }
@@ -261,10 +278,12 @@ pub fn count_inserts<T>(ops: &[Operation<T>]) -> usize {
         .count()
 }
 
+#[must_use]
 pub fn dualise_ops<T>(ops: Vec<Operation<T>>) -> Vec<Operation<Reverse<T>>> {
     from_buckets(dualise_buckets(normalise_buckets(into_buckets(ops))))
 }
 
+#[must_use]
 pub fn undualise_ops<T>(ops: Vec<Operation<Reverse<T>>>) -> Vec<Operation<T>> {
     dualise_ops(ops)
         .into_iter()
@@ -276,6 +295,7 @@ pub fn undualise_ops<T>(ops: Vec<Operation<Reverse<T>>>) -> Vec<Operation<T>> {
 }
 
 // result: definitely-in, definitely-out.
+#[must_use]
 pub fn linear<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
     const CHUNKS: usize = 8;
     let inserts = count_inserts(&ops);
@@ -295,6 +315,14 @@ pub fn linear<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T
     }
 }
 
+/// Processes operations iteratively, alternating between primal and dual approaches.
+/// Returns a vector of elements that are definitely in the heap at the end.
+///
+/// # Panics
+///
+/// Panics if the operations list does not shrink by at least 1/6 of its size in each iteration.
+/// That's the case, when the soft heap corruption guarantee is violated.
+#[must_use]
 pub fn linear_loop<T: Ord + std::fmt::Debug + Clone>(mut ops: Vec<Operation<T>>) -> Vec<T> {
     const CHUNKS: usize = 8;
     let mut result = vec![];
@@ -377,12 +405,12 @@ mod tests {
     proptest! {
         #[test]
         fn corruption_simple(ops in operations()) {
-            simulate_pairing_debug(ops);
+            let _ = simulate_pairing_debug(ops);
         }
 
         #[test]
         fn corruption(ops in full_ops(10_000)) {
-            simulate_pairing_debug(ops.0);
+            let _ = simulate_pairing_debug(ops.0);
         }
 
 
@@ -391,8 +419,8 @@ mod tests {
             let mut naive = sim_naive(ops.clone());
             let mut via_buckets = sim_naive(from_buckets(into_buckets(ops)));
 
-            naive.sort();
-            via_buckets.sort();
+            naive.sort_unstable();
+            via_buckets.sort_unstable();
 
             prop_assert_eq!(naive, via_buckets);
         }
@@ -402,8 +430,8 @@ mod tests {
             let mut naive = sim_naive(ops.clone());
             let mut via_buckets = sim_naive(from_buckets(normalise_buckets(into_buckets(ops))));
 
-            naive.sort();
-            via_buckets.sort();
+            naive.sort_unstable();
+            via_buckets.sort_unstable();
 
             prop_assert_eq!(naive, via_buckets);
         }
@@ -414,8 +442,8 @@ mod tests {
             let mut naive = sim_naive(ops.clone());
             let mut dualised = simulate_dualised(ops);
 
-            naive.sort();
-            dualised.sort();
+            naive.sort_unstable();
+            dualised.sort_unstable();
 
             prop_assert_eq!(naive, dualised);
         }
@@ -424,8 +452,8 @@ mod tests {
             let mut naive = sim_naive(ops.0.clone());
             let mut pairing_in = linear(ops.0.clone());
 
-            naive.sort();
-            pairing_in.sort();
+            naive.sort_unstable();
+            pairing_in.sort_unstable();
 
             prop_assert_eq!(&naive, &pairing_in);
         }
@@ -434,8 +462,8 @@ mod tests {
             let mut naive = sim_naive(ops.0.clone());
             let mut pairing_in_2 = linear_loop(ops.0);
 
-            naive.sort();
-            pairing_in_2.sort();
+            naive.sort_unstable();
+            pairing_in_2.sort_unstable();
 
             prop_assert_eq!(&naive, &pairing_in_2);
         }

@@ -23,6 +23,7 @@ impl<T> Pool<T> {
             .map(|count| Self { count, ..self })
     }
 
+    #[must_use]
     pub fn merge(self, other: Self) -> Self {
         // We assume that self.item <= other.item.
         Self {
@@ -71,6 +72,7 @@ impl<const CHUNKS: usize, T> Pairing<CHUNKS, T> {
 }
 
 impl<const CHUNKS: usize, T: Ord> Pairing<CHUNKS, T> {
+    #[must_use]
     pub fn meld(self, other: Pairing<CHUNKS, T>) -> Pairing<CHUNKS, T> {
         let (mut a, b) = if self.key.item < other.key.item {
             (self, other)
@@ -81,10 +83,18 @@ impl<const CHUNKS: usize, T: Ord> Pairing<CHUNKS, T> {
         a
     }
 
+    #[must_use]
     pub fn insert(self, item: T) -> Self {
         self.meld(Self::new(item))
     }
 
+    /// Corrupts the heap by pooling the top two elements.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the heap property is violated (when the key's item is greater than
+    /// the merged pairing's key item).
+    #[must_use]
     pub fn corrupt(self) -> Self {
         let Pairing { key, children } = self;
         match Self::merge_children(children) {
@@ -204,6 +214,7 @@ impl<const CHUNKS: usize, T> Default for Heap<CHUNKS, T> {
 }
 
 impl<const CHUNKS: usize, T: Ord> Heap<CHUNKS, T> {
+    #[must_use]
     pub fn insert(self, item: T) -> Self {
         match self.root {
             None => Self {
@@ -215,6 +226,7 @@ impl<const CHUNKS: usize, T: Ord> Heap<CHUNKS, T> {
         }
     }
 
+    #[must_use]
     pub fn delete_min(self) -> Self {
         Self {
             root: self.root.and_then(Pairing::delete_min),
