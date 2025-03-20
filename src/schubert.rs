@@ -203,7 +203,7 @@ pub fn simulate_dualised<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>
 pub fn simulate_pairing_debug<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
     // CHUNKS>=8 and EPS = 6 seem to work.
     // Chunks>=6 and EPS=3 also seem to work.
-    let mut pairing: Heap<6, T> = Heap::default();
+    let mut pairing: Heap<8, T> = Heap::default();
     let mut inserts_so_far = 0;
     for op in ops {
         pairing = match op {
@@ -225,7 +225,7 @@ pub fn simulate_pairing_debug<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operati
         // A very deep heap has very few possible permutations.  In the extreme of a linked list structure, only one possibility.
 
         // How does corruption play into this measure of information?
-        const EPS: usize = 3;
+        const EPS: usize = 6;
         assert!(
             inserts_so_far >= EPS * co,
             "{inserts_so_far} >= {EPS} * {co}; uncorrupted: {un}\n{pairing:?}"
