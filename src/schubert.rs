@@ -1,11 +1,7 @@
 // Schubert matroids.
 use crate::pairing::SoftHeap;
-use std::cmp;
-use std::iter::repeat_with;
 use std::option::Option;
 use std::{cmp::Reverse, fmt::Debug};
-
-use itertools::chain;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Operation<T> {
@@ -32,178 +28,6 @@ impl<T> Operation<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Bucket<T> {
-    pub inserts: Vec<T>,
-    pub deletes: usize,
-}
-
-impl<T> Default for Bucket<T> {
-    fn default() -> Self {
-        Bucket {
-            inserts: vec![],
-            deletes: 0,
-        }
-    }
-}
-
-impl<T> Bucket<T> {
-    #[must_use]
-    pub fn merge(mut self, other: Bucket<T>) -> Self {
-        self.inserts.extend(other.inserts);
-        self.deletes += other.deletes;
-        self
-    }
-
-    #[must_use]
-    pub fn is_net_contributor(&self) -> bool {
-        self.deletes < self.inserts.len()
-    }
-
-    /// Make sure the bucket doesn't have excess deletes.
-    #[must_use]
-    pub fn remove_excess_deletes(mut self) -> Self {
-        self.deletes = cmp::min(self.inserts.len(), self.deletes);
-        self
-    }
-
-    #[must_use]
-    pub fn total_count(&self) -> usize {
-        self.inserts.len() + self.deletes
-    }
-
-    #[must_use]
-    pub fn try_merge(self, other: Self) -> (Self, Option<Self>) {
-        if self.deletes == 0 || other.inserts.len() <= other.deletes {
-            (self.merge(other), None)
-        } else {
-            (self, Some(other))
-        }
-    }
-}
-
-pub type Buckets<T> = Vec<Bucket<T>>;
-
-impl<T> From<Operation<T>> for Bucket<T> {
-    fn from(op: Operation<T>) -> Self {
-        match op {
-            Operation::Insert(x) => Bucket {
-                inserts: vec![x],
-                deletes: 0,
-            },
-            Operation::DeleteMin => Bucket {
-                inserts: vec![],
-                deletes: 1,
-            },
-        }
-    }
-}
-
-#[must_use]
-pub fn into_buckets<T>(ops: Vec<Operation<T>>) -> Buckets<T> {
-    ops.into_iter()
-        .map(Bucket::from)
-        .collect::<Vec<Bucket<T>>>()
-}
-
-impl<T> IntoIterator for Bucket<T> {
-    type Item = Operation<T>;
-    type IntoIter = std::iter::Chain<
-        std::iter::Map<std::vec::IntoIter<T>, fn(T) -> Operation<T>>,
-        std::iter::Take<std::iter::RepeatWith<fn() -> Operation<T>>>,
-    >;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let insert_fn: fn(T) -> Operation<T> = Operation::Insert;
-        let delete_fn: fn() -> Operation<T> = || Operation::DeleteMin;
-
-        chain!(
-            self.inserts.into_iter().map(insert_fn),
-            repeat_with(delete_fn).take(self.deletes)
-        )
-    }
-}
-
-pub fn from_buckets<T>(buckets: Buckets<T>) -> Vec<Operation<T>> {
-    buckets
-        .into_iter()
-        .flat_map(IntoIterator::into_iter)
-        .collect::<Vec<Operation<T>>>()
-}
-
-/// Strictly speaking, this one only works for normalised buckets.
-#[must_use]
-pub fn dualise_buckets<T>(buckets: Buckets<T>) -> Buckets<Reverse<T>> {
-    buckets
-        .into_iter()
-        .rev()
-        .map(|Bucket { inserts, deletes }| Bucket {
-            deletes: inserts.len().saturating_sub(deletes),
-            inserts: inserts.into_iter().rev().map(Reverse).collect(),
-        })
-        .collect()
-}
-
-/// Normalises a list of buckets
-///
-/// Repeatedly merge adjacent buckets, without changing the final result
-/// of the operations, or the total multiset of inserts.
-///
-/// We can merge adjacent buckets A and B, if:
-/// - either A has no deletes
-/// - or B has at least as many deletes as inserts.
-///
-/// As consequence of the normal form is all but the first bucket satisfy:
-/// - deletes < inserts
-///
-/// and all but the last bucket satisfy:
-/// - 0 < deletes
-///
-/// We remove excess deletes from the first bucket.
-///
-/// This normal form simplifies dualising.
-#[must_use]
-pub fn normalise_buckets<T>(buckets: Buckets<T>) -> Buckets<T> {
-    let mut excess_deletes = 0;
-    let mut new_buckets = Vec::new();
-
-    for bucket in buckets.into_iter().rev() {
-        excess_deletes += bucket.deletes;
-        let needed_deletes = cmp::min(excess_deletes, bucket.inserts.len());
-        excess_deletes -= needed_deletes;
-        let bucket = Bucket {
-            inserts: bucket.inserts,
-            deletes: needed_deletes,
-        };
-        if !bucket.inserts.is_empty() {
-            new_buckets.push(bucket);
-        }
-    }
-    new_buckets.reverse();
-    new_buckets
-}
-
-#[must_use]
-pub fn normalise_buckets_old<T>(buckets: Buckets<T>) -> Buckets<T> {
-    let mut new_buckets = Vec::new();
-    let mut open_bucket = Bucket::default();
-    // Process buckets in reverse order.  That way we only need a single pass:
-    for bucket in buckets.into_iter().rev() {
-        // combine buckets:
-        let (bucket, closed_bucket) = bucket.try_merge(open_bucket);
-        if let Some(b) = closed_bucket {
-            new_buckets.push(b);
-        }
-        open_bucket = bucket;
-    }
-    // Push the last bucket, so we don't lose inserts:
-    if !open_bucket.inserts.is_empty() {
-        new_buckets.push(open_bucket.remove_excess_deletes());
-    }
-    new_buckets.reverse();
-    new_buckets
-}
-
 pub fn count_deletes<T>(ops: &[Operation<T>]) -> usize {
     ops.iter()
         .filter(|op| matches!(op, Operation::DeleteMin))
@@ -219,12 +43,28 @@ pub fn count_inserts<T>(ops: &[Operation<T>]) -> usize {
 #[must_use]
 pub fn dualise_ops<T>(ops: Vec<Operation<T>>) -> Vec<Operation<Reverse<T>>> {
     from_wrapped_ops(dualise_wrapped_ops(to_wrapped_ops(ops)))
-    // from_buckets(dualise_buckets(normalise_buckets(into_buckets(ops))))
 }
 
+/// This is equivalent to the formulation that we can create a nested by matroid by starting with an empty matroid
+/// and repeatedly either adding a co-loop or a free extension.
+///
+/// Coloop === `has_delete` is false
+/// Free extension === `has_delete` is true
 pub struct WrappedOp<T> {
     pub item: T,
     pub has_delete: bool,
+}
+
+impl<T> WrappedOp<T> {
+    pub fn map<U, F>(self, f: F) -> WrappedOp<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        WrappedOp {
+            item: f(self.item),
+            has_delete: self.has_delete,
+        }
+    }
 }
 
 #[must_use]
@@ -287,28 +127,7 @@ pub fn undualise_ops<T>(ops: Vec<Operation<Reverse<T>>>) -> Vec<Operation<T>> {
 
 #[must_use]
 pub fn normalise_ops<T>(ops: Vec<Operation<T>>) -> Vec<Operation<T>> {
-    from_buckets(normalise_buckets(into_buckets(ops)))
-}
-
-// result: definitely-in, definitely-out.
-#[must_use]
-pub fn linear<T: Ord + Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
-    const CHUNKS: usize = 8;
-    let inserts = count_inserts(&ops);
-    let deletes = count_deletes(&ops);
-    if ops.is_empty() {
-        vec![]
-    } else if deletes * 2 <= inserts {
-        // primal
-        let (left_ops, guaranteed_in) = approximate_heap::<CHUNKS, _>(ops);
-        chain!(guaranteed_in, linear(left_ops)).collect()
-    } else {
-        // here we need to dualise.
-        let dual_ops = dualise_ops(ops);
-
-        let (left_over_ops, _guaranteed_out) = approximate_heap::<CHUNKS, _>(dual_ops);
-        linear(undualise_ops(left_over_ops))
-    }
+    from_wrapped_ops(to_wrapped_ops(ops))
 }
 
 /// Processes operations iteratively, alternating between primal and dual approaches.
@@ -412,7 +231,7 @@ pub fn approximate_heap<const CHUNKS: usize, T: Ord + Debug + Clone>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use itertools::{izip, Itertools};
+    use itertools::{chain, izip, Itertools};
     use proptest::prelude::{any, Strategy};
     use proptest::prelude::{prop_assert_eq, proptest};
     use std::cmp::min;
@@ -505,11 +324,8 @@ mod tests {
         // We can fix that later.
 
         let original_ops = ops.clone();
+        let ops = dualise_ops(ops);
 
-        let buckets = into_buckets(ops);
-        let buckets = normalise_buckets(buckets);
-        let buckets = dualise_buckets(buckets);
-        let ops = from_buckets(buckets);
         let result = sim_naive(ops);
         let result = result
             .into_iter()
@@ -585,27 +401,15 @@ mod tests {
             let _ = simulate_pairing_debug(ops.0);
         }
 
-
         #[test]
-        fn test_simulate_via_buckets(ops in operations()) {
+        fn test_simulate_normalised_ops(ops in operations()) {
             let mut naive = sim_naive(ops.clone());
-            let mut via_buckets = sim_naive(from_buckets(into_buckets(ops)));
+            let mut via_wrapped = sim_naive(normalise_ops(ops));
 
             naive.sort_unstable();
-            via_buckets.sort_unstable();
+            via_wrapped.sort_unstable();
 
-            prop_assert_eq!(naive, via_buckets);
-        }
-
-        #[test]
-        fn test_simulate_via_buckets_normalised(ops in operations()) {
-            let mut naive = sim_naive(ops.clone());
-            let mut via_buckets = sim_naive(from_buckets(normalise_buckets(into_buckets(ops))));
-
-            naive.sort_unstable();
-            via_buckets.sort_unstable();
-
-            prop_assert_eq!(naive, via_buckets);
+            prop_assert_eq!(naive, via_wrapped);
         }
 
 
@@ -619,16 +423,7 @@ mod tests {
 
             prop_assert_eq!(naive, dualised);
         }
-        #[test]
-        fn test_via_pairing_heap(ops in full_ops(10_000)) {
-            let mut naive = sim_naive(ops.0.clone());
-            let mut pairing_in = linear(ops.0.clone());
 
-            naive.sort_unstable();
-            pairing_in.sort_unstable();
-
-            prop_assert_eq!(&naive, &pairing_in);
-        }
         #[test]
         fn test_via_pairing_heap_loop(ops in full_ops(10_000)) {
             let mut naive = sim_naive(ops.0.clone());
