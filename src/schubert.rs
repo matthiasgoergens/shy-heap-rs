@@ -1,5 +1,6 @@
 // Schubert matroids.
 use crate::pairing::SoftHeap;
+use std::cmp;
 use std::iter::repeat_with;
 use std::option::Option;
 use std::{cmp::Reverse, fmt::Debug};
@@ -47,19 +48,37 @@ impl<T> Default for Bucket<T> {
 }
 
 impl<T> Bucket<T> {
-    pub fn extend(&mut self, other: Bucket<T>) {
+    #[must_use]
+    pub fn merge(mut self, other: Bucket<T>) -> Self {
         self.inserts.extend(other.inserts);
         self.deletes += other.deletes;
+        self
     }
 
     #[must_use]
-    pub fn is_in_normal_form(&self) -> bool {
+    pub fn is_net_contributor(&self) -> bool {
         self.deletes < self.inserts.len()
+    }
+
+    /// Make sure the bucket doesn't have excess deletes.
+    #[must_use]
+    pub fn remove_excess_deletes(mut self) -> Self {
+        self.deletes = cmp::min(self.inserts.len(), self.deletes);
+        self
     }
 
     #[must_use]
     pub fn total_count(&self) -> usize {
         self.inserts.len() + self.deletes
+    }
+
+    #[must_use]
+    pub fn try_merge(self, other: Self) -> (Self, Option<Self>) {
+        if self.deletes == 0 || other.inserts.len() <= other.deletes {
+            (self.merge(other), None)
+        } else {
+            (self, Some(other))
+        }
     }
 }
 
@@ -125,36 +144,38 @@ pub fn dualise_buckets<T>(buckets: Buckets<T>) -> Buckets<Reverse<T>> {
         .collect()
 }
 
-/// Normalises the buckets.
+/// Normalises a list of buckets
 ///
-/// A list of buckets is in normal form, if all but the first bucket are in normal form.
+/// Repeatedly merge adjacent buckets, without changing the final result
+/// of the operations, or the total multiset of inserts.
 ///
-/// A bucket is in normal form, if it contributes at least one new item on net.
-/// That is, if it has more inserts than deletes.
+/// We can merge adjacent buckets A and B, if:
+/// - either A has no deletes
+/// - or B has at least as many deletes as inserts.
 ///
-/// If a bucket is _not_ in normal form, we can merge it with the previous bucket, without changing
-/// the result of the operations.
+/// As consequence of the normal form is all but the first bucket satisfy:
+/// - deletes < inserts
 ///
-/// This normal form is required to make dualisation work correctly.
+/// and all but the last bucket satisfy:
+/// - 0 < deletes
+///
+/// This normal form simplifies dualising.
 #[must_use]
 pub fn normalise_buckets<T>(buckets: Buckets<T>) -> Buckets<T> {
     let mut new_buckets = Vec::new();
     let mut open_bucket = Bucket::default();
-    for mut bucket in buckets.into_iter().rev() {
+    // Process buckets in reverse order.  That way we only need a single pass:
+    for bucket in buckets.into_iter().rev() {
         // combine buckets:
-        bucket.extend(open_bucket);
-
-        if bucket.is_in_normal_form() {
-            new_buckets.push(bucket);
-            open_bucket = Bucket::default();
-        } else {
-            open_bucket = bucket;
+        let (bucket, closed_bucket) = bucket.try_merge(open_bucket);
+        if let Some(b) = closed_bucket {
+            new_buckets.push(b)
         }
+        open_bucket = bucket;
     }
-    // This one is just so that dualising doesn't lose items,
-    // but also we don't want to add empty buckets.
+    // Push the last bucket, so we don't lose inserts:
     if !open_bucket.inserts.is_empty() {
-        new_buckets.push(open_bucket);
+        new_buckets.push(open_bucket.remove_excess_deletes());
     }
     new_buckets.reverse();
     new_buckets
@@ -189,6 +210,11 @@ pub fn undualise_ops<T>(ops: Vec<Operation<Reverse<T>>>) -> Vec<Operation<T>> {
         .collect::<Vec<_>>()
 }
 
+#[must_use]
+pub fn normalise_ops<T>(ops: Vec<Operation<T>>) -> Vec<Operation<T>> {
+    from_buckets(normalise_buckets(into_buckets(ops)))
+}
+
 // result: definitely-in, definitely-out.
 #[must_use]
 pub fn linear<T: Ord + Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
@@ -218,8 +244,12 @@ pub fn linear<T: Ord + Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
 /// Panics if the operations list does not shrink by at least 1/6 of its size in each iteration.
 /// That's the case, when the soft heap corruption guarantee is violated.
 #[must_use]
-pub fn linear_loop<T: Ord + Debug + Clone>(mut ops: Vec<Operation<T>>) -> Vec<T> {
+pub fn linear_loop<T: Ord + Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
     const CHUNKS: usize = 8;
+
+    // Normalising is not necessary, it just helps makes our debug asserts cleaner.
+    // Normalising removes eg leading deletes, before anything has been inserted.
+    let mut ops = normalise_ops(ops);
     let mut result = vec![];
 
     while !ops.is_empty() {
@@ -231,31 +261,20 @@ pub fn linear_loop<T: Ord + Debug + Clone>(mut ops: Vec<Operation<T>>) -> Vec<T>
             let (left_ops, guaranteed_in) = approximate_heap::<CHUNKS, _>(ops);
             ops = left_ops;
             result.extend(guaranteed_in);
+            assert!(count_inserts(&ops) <= inserts * 2 / 3);
+            assert!(count_inserts(&ops) <= inserts / 6 + deletes);
+            assert!(count_deletes(&ops) == deletes);
         } else {
             // here we need to dualise.
             let dual_ops = dualise_ops(ops);
-
             let (left_over_ops, _guaranteed_out) = approximate_heap::<CHUNKS, _>(dual_ops);
             ops = undualise_ops(left_over_ops);
         }
-        assert!(ops.len() <= (inserts + deletes) * 5 / 6,);
+        debug_assert!(count_inserts(&ops) <= inserts * 2 / 3);
+        debug_assert!(count_deletes(&ops) <= count_inserts(&ops));
     }
     result
 }
-
-// inserts >= 3 * corrupted
-// uncorrupted = inserts - deleted - corrupted
-// deleted <= inserts / 2
-// corrupted <= inserts / 3
-// uncorrupted >= inserts - (inserts / 2) - (inserts / 3)
-// uncorrupted >= inserts / 6
-
-// Well, the above holds for primal.  For dual we have remove deletes instead.
-// inserts <= deletes / 2
-// deletes' = inserts - deletes
-// Now we have 1/6 uncorrupted to be kept.  And that results in losing at least 1/6 of deletes.
-
-// The bool in the result mean 'definitely in the heap at the end'
 
 /// Approximates the heap operations in linear time using a soft heap
 ///
@@ -303,7 +322,7 @@ pub fn approximate_heap<const CHUNKS: usize, T: Ord + Debug + Clone>(
         .into_iter()
         .filter_map(Option::take)
         .collect();
-    // Clean up the tombstones, to get a clean vector of left over operations:
+    // Clean up the tombstones to get a clean vector of left-over operations:
     let left_over_ops: Vec<Operation<T>> = wrapped_ops
         .into_iter()
         .filter_map(|op| match op {
