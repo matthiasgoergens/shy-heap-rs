@@ -164,6 +164,27 @@ pub fn dualise_buckets<T>(buckets: Buckets<T>) -> Buckets<Reverse<T>> {
 /// This normal form simplifies dualising.
 #[must_use]
 pub fn normalise_buckets<T>(buckets: Buckets<T>) -> Buckets<T> {
+    let mut excess_deletes = 0;
+    let mut new_buckets = Vec::new();
+
+    for bucket in buckets.into_iter().rev() {
+        excess_deletes += bucket.deletes;
+        let needed_deletes = cmp::min(excess_deletes, bucket.inserts.len());
+        excess_deletes -= needed_deletes;
+        let bucket = Bucket {
+            inserts: bucket.inserts,
+            deletes: needed_deletes,
+        };
+        if !bucket.inserts.is_empty() {
+            new_buckets.push(bucket);
+        }
+    }
+    new_buckets.reverse();
+    new_buckets
+}
+
+#[must_use]
+pub fn normalise_buckets_old<T>(buckets: Buckets<T>) -> Buckets<T> {
     let mut new_buckets = Vec::new();
     let mut open_bucket = Bucket::default();
     // Process buckets in reverse order.  That way we only need a single pass:
@@ -197,7 +218,59 @@ pub fn count_inserts<T>(ops: &[Operation<T>]) -> usize {
 
 #[must_use]
 pub fn dualise_ops<T>(ops: Vec<Operation<T>>) -> Vec<Operation<Reverse<T>>> {
-    from_buckets(dualise_buckets(normalise_buckets(into_buckets(ops))))
+    from_wrapped_ops(dualise_wrapped_ops(to_wrapped_ops(ops)))
+    // from_buckets(dualise_buckets(normalise_buckets(into_buckets(ops))))
+}
+
+pub struct WrappedOp<T> {
+    pub item: T,
+    pub has_delete: bool,
+}
+
+#[must_use]
+pub fn to_wrapped_ops<T>(ops: Vec<Operation<T>>) -> Vec<WrappedOp<T>> {
+    let mut excess_deletes: usize = 0;
+    let mut new_ops = vec![];
+    for op in ops.into_iter().rev() {
+        match op {
+            Operation::Insert(item) => {
+                new_ops.push(WrappedOp {
+                    item,
+                    has_delete: excess_deletes > 0,
+                });
+                excess_deletes = excess_deletes.saturating_sub(1);
+            }
+            Operation::DeleteMin => {
+                excess_deletes += 1;
+            }
+        }
+    }
+    new_ops.reverse();
+    new_ops
+}
+
+#[must_use]
+pub fn from_wrapped_ops<T>(ops: Vec<WrappedOp<T>>) -> Vec<Operation<T>> {
+    ops.into_iter()
+        .flat_map(|WrappedOp { item, has_delete }| {
+            if has_delete {
+                vec![Operation::Insert(item), Operation::DeleteMin]
+            } else {
+                vec![Operation::Insert(item)]
+            }
+        })
+        .collect()
+}
+
+#[must_use]
+pub fn dualise_wrapped_ops<T>(ops: Vec<WrappedOp<T>>) -> Vec<WrappedOp<Reverse<T>>> {
+    ops.into_iter()
+        .rev()
+        .map(|WrappedOp { item, has_delete }| WrappedOp {
+            item: Reverse(item),
+            has_delete: !has_delete,
+        })
+        .collect()
 }
 
 /// Dualise a dual.
