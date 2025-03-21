@@ -1,9 +1,10 @@
 // Schubert matroids.
-use crate::{index_order::SliceIndexOrdering, pairing::SoftHeap};
+use crate::pairing::SoftHeap;
 use std::iter::repeat_with;
+use std::option::Option;
 use std::{cmp::Reverse, fmt::Debug};
 
-use itertools::{chain, enumerate};
+use itertools::chain;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Operation<T> {
@@ -256,82 +257,62 @@ pub fn linear_loop<T: Ord + Debug + Clone>(mut ops: Vec<Operation<T>>) -> Vec<T>
 
 // The bool in the result mean 'definitely in the heap at the end'
 
-/// Approximates the heap operations using a soft heap
+/// Approximates the heap operations in linear time using a soft heap
 ///
 /// This function approximates heap operations (using a soft heap).
 ///
 /// Given any sequence of operations `ops` we have:
 /// ```notest
-///     let (left_over_ops, guaranteed_in) = approximate_heap(ops);
-///     precise_heap(ops) == precise_heap(left_over_ops) + guaranteed_in
+///     let (left_over_ops, guaranteed_survivors) = approximate_heap(ops);
+///     precise_heap(left_over_ops) + guaranteed_survivors === precise_heap(ops)
 /// ```
 /// where (+) means multiset union.
+///
+/// You could trivially make this work out, by just returning the operations unchanged and zero
+/// guaranteed survivors.  But the neat thing is that soft heaps gives us some guarantees.
+///
+/// Specifically for n inserts and k deletes, we have:
+/// ```notest
+///    corrupted <= epsilon * n
+///    guaranteed_survivors := n - k - corrupted
+///    guaranteed_survivors >= n * (1-epsilon) - k
+/// ```
+/// where epsilon is a function of CHUNKS. For CHUNKS=8, epsilon <= 1/6.
+///
+/// If you can get k <= n/2, then you can get `guaranteed_survivors` >= n * (1 - 1/6) - n/2 = n/3
+#[must_use]
 pub fn approximate_heap<const CHUNKS: usize, T: Ord + Debug + Clone>(
     ops: Vec<Operation<T>>,
 ) -> (Vec<Operation<T>>, Vec<T>) {
-    let ops_with_index = enumerate(&ops).map(|(i, op)| op.as_ref().map(|x| (x, i)));
-    let pairing = ops_with_index.fold(SoftHeap::<CHUNKS, _>::default(), |pairing, op| match op {
-        Operation::Insert(xi) => pairing.insert(xi),
-        Operation::DeleteMin => pairing.delete_min(),
-    });
-    let left_over_items: Vec<usize> = Vec::from(pairing)
+    // Wrap ops, so we can keep track of tombstones.
+    let mut wrapped_ops: Vec<Operation<Option<T>>> =
+        ops.into_iter().map(|op| op.map(Some)).collect();
+
+    // Run the actual heap operations:
+    let heap: SoftHeap<CHUNKS, &mut Option<T>> =
+        wrapped_ops
+            .iter_mut()
+            .fold(SoftHeap::default(), |heap, op| match op {
+                Operation::Insert(x) => heap.insert(x),
+                Operation::DeleteMin => heap.delete_min(),
+            });
+
+    // Use the heap to collect guaranteed survivors from the sequence of operations,
+    // and leave tombstones in their stead.
+    let guaranteed_survivors: Vec<T> = Vec::from(heap)
         .into_iter()
-        .map(|(_x, i)| i)
-        .collect::<Vec<_>>();
-
-    // TODO: we could prettify this one a bit.
-    let mut ops_result = ops.into_iter().map(Some).collect::<Vec<_>>();
-    let mut result = vec![];
-    for i in left_over_items {
-        let op = ops_result[i].take();
-        if let Some(Operation::Insert(x)) = op {
-            result.push(x);
-        } else {
-            unreachable!();
-        }
-    }
-    (ops_result.into_iter().flatten().collect::<Vec<_>>(), result)
-}
-
-/// Approximates the heap operations using a soft heap
-///
-/// This function approximates heap operations (using a soft heap).
-///
-/// Given any sequence of operations `ops` we have:
-/// ```notest
-///     let (left_over_ops, guaranteed_in) = approximate_heap(ops);
-///     precise_heap(ops) == precise_heap(left_over_ops) + guaranteed_in
-/// ```
-/// where (+) means multiset union.
-pub fn approximate_heap_index_order<const CHUNKS: usize, T: Ord + Debug + Clone>(
-    ops: Vec<Operation<T>>,
-) -> (Vec<Operation<T>>, Vec<T>) {
-    let index_order = SliceIndexOrdering::new(&ops);
-
-    let mut pairing: SoftHeap<CHUNKS, _> = SoftHeap::default();
-    for (i, op) in enumerate(&ops) {
-        pairing = match op {
-            Operation::Insert(_x) => pairing.insert(index_order.index(i)),
-            Operation::DeleteMin => pairing.delete_min(),
-        };
-    }
-    let left_over: Vec<usize> = Vec::from(pairing)
+        .filter_map(Option::take)
+        .collect();
+    // Clean up the tombstones, to get a clean vector of left over operations:
+    let left_over_ops: Vec<Operation<T>> = wrapped_ops
         .into_iter()
-        .map(|x| x.index)
-        .collect::<Vec<_>>();
+        .filter_map(|op| match op {
+            Operation::Insert(x) => x.map(Operation::Insert),
+            Operation::DeleteMin => Some(Operation::DeleteMin),
+        })
+        .collect();
 
-    // TODO: we could prettify this one a bit.
-    let mut ops_result = ops.into_iter().map(Some).collect::<Vec<_>>();
-    let mut result = vec![];
-    for i in left_over {
-        let op = ops_result[i].take();
-        if let Some(Operation::Insert(x)) = op {
-            result.push(x);
-        } else {
-            unreachable!();
-        }
-    }
-    (ops_result.into_iter().flatten().collect::<Vec<_>>(), result)
+    (left_over_ops, guaranteed_survivors)
 }
 
 #[cfg(test)]
