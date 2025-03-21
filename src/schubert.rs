@@ -159,6 +159,8 @@ pub fn dualise_buckets<T>(buckets: Buckets<T>) -> Buckets<Reverse<T>> {
 /// and all but the last bucket satisfy:
 /// - 0 < deletes
 ///
+/// We remove excess deletes from the first bucket.
+///
 /// This normal form simplifies dualising.
 #[must_use]
 pub fn normalise_buckets<T>(buckets: Buckets<T>) -> Buckets<T> {
@@ -169,7 +171,7 @@ pub fn normalise_buckets<T>(buckets: Buckets<T>) -> Buckets<T> {
         // combine buckets:
         let (bucket, closed_bucket) = bucket.try_merge(open_bucket);
         if let Some(b) = closed_bucket {
-            new_buckets.push(b)
+            new_buckets.push(b);
         }
         open_bucket = bucket;
     }
