@@ -1,8 +1,7 @@
 // Schubert matroids.
 use crate::{index_order::SliceIndexOrdering, pairing::SoftHeap};
-use std::cmp::Reverse;
-use std::fmt::Debug;
 use std::iter::repeat_with;
+use std::{cmp::Reverse, fmt::Debug};
 
 use itertools::{chain, enumerate};
 
@@ -13,18 +12,54 @@ pub enum Operation<T> {
 }
 
 impl<T> Operation<T> {
-    pub fn map<U>(self, f: fn(T) -> U) -> Operation<U> {
+    pub fn map<U, F>(self, f: F) -> Operation<U>
+    where
+        F: FnOnce(T) -> U,
+    {
         match self {
-            Operation::Insert(x) => Operation::Insert(f(x)),
-            Operation::DeleteMin => Operation::DeleteMin,
+            Self::Insert(x) => Operation::Insert(f(x)),
+            Self::DeleteMin => Operation::DeleteMin,
+        }
+    }
+
+    pub const fn as_ref(&self) -> Operation<&T> {
+        match *self {
+            Self::Insert(ref x) => Operation::Insert(x),
+            Self::DeleteMin => Operation::DeleteMin,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Bucket<T> {
     pub inserts: Vec<T>,
     pub deletes: usize,
+}
+
+impl<T> Default for Bucket<T> {
+    fn default() -> Self {
+        Bucket {
+            inserts: vec![],
+            deletes: 0,
+        }
+    }
+}
+
+impl<T> Bucket<T> {
+    pub fn extend(&mut self, other: Bucket<T>) {
+        self.inserts.extend(other.inserts);
+        self.deletes += other.deletes;
+    }
+
+    #[must_use]
+    pub fn is_in_normal_form(&self) -> bool {
+        self.deletes < self.inserts.len()
+    }
+
+    #[must_use]
+    pub fn total_count(&self) -> usize {
+        self.inserts.len() + self.deletes
+    }
 }
 
 pub type Buckets<T> = Vec<Bucket<T>>;
@@ -89,30 +124,34 @@ pub fn dualise_buckets<T>(buckets: Buckets<T>) -> Buckets<Reverse<T>> {
         .collect()
 }
 
+/// Normalises the buckets.
+///
+/// A list of buckets is in normal form, if all but the first bucket are in normal form.
+///
+/// A bucket is in normal form, if it contributes at least one new item on net.
+/// That is, if it has more inserts than deletes.
+///
+/// If a bucket is _not_ in normal form, we can merge it with the previous bucket, without changing
+/// the result of the operations.
+///
+/// This normal form is required to make dualisation work correctly.
 #[must_use]
 pub fn normalise_buckets<T>(buckets: Buckets<T>) -> Buckets<T> {
     let mut new_buckets = Vec::new();
-    let mut open_bucket = Bucket {
-        inserts: vec![],
-        deletes: 0,
-    };
+    let mut open_bucket = Bucket::default();
     for mut bucket in buckets.into_iter().rev() {
         // combine buckets:
-        bucket.inserts.extend(open_bucket.inserts);
-        bucket.deletes += open_bucket.deletes;
+        bucket.extend(open_bucket);
 
-        // Check if combined bucket is open:
-        if bucket.inserts.len() <= bucket.deletes {
-            open_bucket = bucket;
-        } else {
+        if bucket.is_in_normal_form() {
             new_buckets.push(bucket);
-            open_bucket = Bucket {
-                inserts: vec![],
-                deletes: 0,
-            };
+            open_bucket = Bucket::default();
+        } else {
+            open_bucket = bucket;
         }
     }
-    // This one is just so that dualising doesn't lose items.
+    // This one is just so that dualising doesn't lose items,
+    // but also we don't want to add empty buckets.
     if !open_bucket.inserts.is_empty() {
         new_buckets.push(open_bucket);
     }
@@ -137,6 +176,10 @@ pub fn dualise_ops<T>(ops: Vec<Operation<T>>) -> Vec<Operation<Reverse<T>>> {
     from_buckets(dualise_buckets(normalise_buckets(into_buckets(ops))))
 }
 
+/// Dualise a dual.
+///
+/// Logically speaking, dualising is its own inverse.  But we need to fix up the types, because Rust
+/// doesn't know that `Reverse<Reverse<T>>` is the same as `T`.
 #[must_use]
 pub fn undualise_ops<T>(ops: Vec<Operation<Reverse<T>>>) -> Vec<Operation<T>> {
     dualise_ops(ops)
@@ -147,7 +190,7 @@ pub fn undualise_ops<T>(ops: Vec<Operation<Reverse<T>>>) -> Vec<Operation<T>> {
 
 // result: definitely-in, definitely-out.
 #[must_use]
-pub fn linear<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
+pub fn linear<T: Ord + Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
     const CHUNKS: usize = 8;
     let inserts = count_inserts(&ops);
     let deletes = count_deletes(&ops);
@@ -155,13 +198,13 @@ pub fn linear<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T
         vec![]
     } else if deletes * 2 <= inserts {
         // primal
-        let (left_ops, guaranteed_in) = simulate_pairing::<CHUNKS, _>(ops);
+        let (left_ops, guaranteed_in) = approximate_heap::<CHUNKS, _>(ops);
         chain!(guaranteed_in, linear(left_ops)).collect()
     } else {
         // here we need to dualise.
         let dual_ops = dualise_ops(ops);
 
-        let (left_over_ops, _guaranteed_out) = simulate_pairing::<CHUNKS, _>(dual_ops);
+        let (left_over_ops, _guaranteed_out) = approximate_heap::<CHUNKS, _>(dual_ops);
         linear(undualise_ops(left_over_ops))
     }
 }
@@ -174,7 +217,7 @@ pub fn linear<T: Ord + std::fmt::Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T
 /// Panics if the operations list does not shrink by at least 1/6 of its size in each iteration.
 /// That's the case, when the soft heap corruption guarantee is violated.
 #[must_use]
-pub fn linear_loop<T: Ord + std::fmt::Debug + Clone>(mut ops: Vec<Operation<T>>) -> Vec<T> {
+pub fn linear_loop<T: Ord + Debug + Clone>(mut ops: Vec<Operation<T>>) -> Vec<T> {
     const CHUNKS: usize = 8;
     let mut result = vec![];
 
@@ -184,14 +227,14 @@ pub fn linear_loop<T: Ord + std::fmt::Debug + Clone>(mut ops: Vec<Operation<T>>)
 
         if deletes * 2 <= inserts {
             // primal
-            let (left_ops, guaranteed_in) = simulate_pairing::<CHUNKS, _>(ops);
+            let (left_ops, guaranteed_in) = approximate_heap::<CHUNKS, _>(ops);
             ops = left_ops;
             result.extend(guaranteed_in);
         } else {
             // here we need to dualise.
             let dual_ops = dualise_ops(ops);
 
-            let (left_over_ops, _guaranteed_out) = simulate_pairing::<CHUNKS, _>(dual_ops);
+            let (left_over_ops, _guaranteed_out) = approximate_heap::<CHUNKS, _>(dual_ops);
             ops = undualise_ops(left_over_ops);
         }
         assert!(ops.len() <= (inserts + deletes) * 5 / 6,);
@@ -211,25 +254,27 @@ pub fn linear_loop<T: Ord + std::fmt::Debug + Clone>(mut ops: Vec<Operation<T>>)
 // deletes' = inserts - deletes
 // Now we have 1/6 uncorrupted to be kept.  And that results in losing at least 1/6 of deletes.
 
-/// The bool in the result mean 'definitely in the heap at the end'
-pub fn simulate_pairing<const CHUNKS: usize, T: Ord + std::fmt::Debug + Clone>(
+// The bool in the result mean 'definitely in the heap at the end'
+
+/// Approximates the heap operations using a soft heap
+///
+/// This function approximates heap operations (using a soft heap).
+///
+/// Given any sequence of operations `ops` we have:
+/// ```notest
+///     let (left_over_ops, guaranteed_in) = approximate_heap(ops);
+///     precise_heap(ops) == precise_heap(left_over_ops) + guaranteed_in
+/// ```
+/// where (+) means multiset union.
+pub fn approximate_heap<const CHUNKS: usize, T: Ord + Debug + Clone>(
     ops: Vec<Operation<T>>,
 ) -> (Vec<Operation<T>>, Vec<T>) {
-    let ops_with_index = enumerate(&ops)
-        .map(|(i, op)| match op {
-            Operation::Insert(x) => Operation::Insert((x, i)),
-            Operation::DeleteMin => Operation::DeleteMin,
-        })
-        .collect::<Vec<_>>();
-
-    let mut pairing: SoftHeap<CHUNKS, _> = SoftHeap::default();
-    for op in ops_with_index {
-        pairing = match op {
-            Operation::Insert(x) => pairing.insert(x),
-            Operation::DeleteMin => pairing.delete_min(),
-        };
-    }
-    let left_over: Vec<usize> = Vec::from(pairing)
+    let ops_with_index = enumerate(&ops).map(|(i, op)| op.as_ref().map(|x| (x, i)));
+    let pairing = ops_with_index.fold(SoftHeap::<CHUNKS, _>::default(), |pairing, op| match op {
+        Operation::Insert(xi) => pairing.insert(xi),
+        Operation::DeleteMin => pairing.delete_min(),
+    });
+    let left_over_items: Vec<usize> = Vec::from(pairing)
         .into_iter()
         .map(|(_x, i)| i)
         .collect::<Vec<_>>();
@@ -237,7 +282,7 @@ pub fn simulate_pairing<const CHUNKS: usize, T: Ord + std::fmt::Debug + Clone>(
     // TODO: we could prettify this one a bit.
     let mut ops_result = ops.into_iter().map(Some).collect::<Vec<_>>();
     let mut result = vec![];
-    for i in left_over {
+    for i in left_over_items {
         let op = ops_result[i].take();
         if let Some(Operation::Insert(x)) = op {
             result.push(x);
@@ -248,8 +293,17 @@ pub fn simulate_pairing<const CHUNKS: usize, T: Ord + std::fmt::Debug + Clone>(
     (ops_result.into_iter().flatten().collect::<Vec<_>>(), result)
 }
 
-/// The bool in the result mean 'definitely in the heap at the end'
-pub fn simulate_pairing_index_order<const CHUNKS: usize, T: Ord + std::fmt::Debug + Clone>(
+/// Approximates the heap operations using a soft heap
+///
+/// This function approximates heap operations (using a soft heap).
+///
+/// Given any sequence of operations `ops` we have:
+/// ```notest
+///     let (left_over_ops, guaranteed_in) = approximate_heap(ops);
+///     precise_heap(ops) == precise_heap(left_over_ops) + guaranteed_in
+/// ```
+/// where (+) means multiset union.
+pub fn approximate_heap_index_order<const CHUNKS: usize, T: Ord + Debug + Clone>(
     ops: Vec<Operation<T>>,
 ) -> (Vec<Operation<T>>, Vec<T>) {
     let index_order = SliceIndexOrdering::new(&ops);
@@ -284,8 +338,8 @@ pub fn simulate_pairing_index_order<const CHUNKS: usize, T: Ord + std::fmt::Debu
 mod tests {
     use super::*;
     use itertools::{izip, Itertools};
-    use proptest::prelude::*;
     use proptest::prelude::{any, Strategy};
+    use proptest::prelude::{prop_assert_eq, proptest};
     use std::cmp::min;
     use std::collections::{BTreeSet, BinaryHeap};
     use std::iter::repeat;

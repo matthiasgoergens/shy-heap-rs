@@ -1,7 +1,7 @@
 // Soft heaps based on pairing heaps.
 // We do min-heaps by default.
 
-use std::{collections::VecDeque, vec};
+use std::collections::VecDeque;
 
 use itertools::Itertools;
 
