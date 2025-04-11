@@ -29,12 +29,12 @@ impl<T> Pool<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct Pairing<const CHUNKS: usize, T> {
+pub struct Pairing<const CORRUPT_EVERY_N: usize, T> {
     pub key: Pool<T>,
-    pub children: Vec<Pairing<CHUNKS, T>>,
+    pub children: Vec<Pairing<CORRUPT_EVERY_N, T>>,
 }
 
-impl<const CHUNKS: usize, T> From<Pool<T>> for Pairing<CHUNKS, T> {
+impl<const CORRUPT_EVERY_N: usize, T> From<Pool<T>> for Pairing<CORRUPT_EVERY_N, T> {
     fn from(key: Pool<T>) -> Self {
         Self {
             key,
@@ -43,7 +43,7 @@ impl<const CHUNKS: usize, T> From<Pool<T>> for Pairing<CHUNKS, T> {
     }
 }
 
-impl<const CHUNKS: usize, T> Pairing<CHUNKS, T> {
+impl<const CORRUPT_EVERY_N: usize, T> Pairing<CORRUPT_EVERY_N, T> {
     pub fn new(item: T) -> Self {
         Self::from(Pool::new(item))
     }
@@ -66,9 +66,9 @@ impl<const CHUNKS: usize, T> Pairing<CHUNKS, T> {
     }
 }
 
-impl<const CHUNKS: usize, T: Ord> Pairing<CHUNKS, T> {
+impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     #[must_use]
-    pub fn meld(self, other: Pairing<CHUNKS, T>) -> Pairing<CHUNKS, T> {
+    pub fn meld(self, other: Pairing<CORRUPT_EVERY_N, T>) -> Pairing<CORRUPT_EVERY_N, T> {
         let (mut a, b) = if self.key.item < other.key.item {
             (self, other)
         } else {
@@ -130,23 +130,30 @@ impl<const CHUNKS: usize, T: Ord> Pairing<CHUNKS, T> {
     /// variant.)
     #[must_use]
     pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
-        let mut d = VecDeque::from(items);
+        // TODO: use a different corruption scheme, one based on levels?
+        // We should probably go back to corrupting everything at a specific
+        // level, even if this one here is very tempting.
+        let mut d: VecDeque<_> = items.into_iter().map(|x| (x, 0)).collect();
 
-        for i in 1.. {
+        // VecDeque::from();
+
+        loop {
             match (d.pop_front(), d.pop_front()) {
                 (None, _) => return None,
-                (Some(a), None) => return Some(a),
-                (Some(a), Some(b)) => {
+                (Some((a, _)), None) => return Some(a),
+                (Some((a, _)), Some((b, level))) => {
                     let a = a.meld(b);
-                    d.push_back(if i % CHUNKS == 0 {
-                        a.corrupt(corrupted)
-                    } else {
-                        a
-                    });
+                    d.push_back((
+                        if level == CORRUPT_EVERY_N {
+                            a.corrupt(corrupted)
+                        } else {
+                            a
+                        },
+                        level + 1,
+                    ));
                 }
             }
         }
-        unreachable!();
     }
 
     pub fn check_heap_property(&self) -> bool {
@@ -157,8 +164,8 @@ impl<const CHUNKS: usize, T: Ord> Pairing<CHUNKS, T> {
 }
 
 // Get all non-corrupted elements still in the heap.
-impl<const CHUNKS: usize, T> From<Pairing<CHUNKS, T>> for Vec<T> {
-    fn from(pairing: Pairing<CHUNKS, T>) -> Self {
+impl<const CORRUPT_EVERY_N: usize, T> From<Pairing<CORRUPT_EVERY_N, T>> for Vec<T> {
+    fn from(pairing: Pairing<CORRUPT_EVERY_N, T>) -> Self {
         // Pre-order traversal.
         let mut items = vec![];
         let mut todo = VecDeque::from([pairing]);
@@ -179,17 +186,17 @@ impl<const CHUNKS: usize, T> From<Pairing<CHUNKS, T>> for Vec<T> {
 // Also: actually use the soft pairing heap for my Schubert matroid.
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct SoftHeap<const CHUNKS: usize, T> {
-    pub root: Option<Pairing<CHUNKS, T>>,
+pub struct SoftHeap<const CORRUPT_EVERY_N: usize, T> {
+    pub root: Option<Pairing<CORRUPT_EVERY_N, T>>,
 }
 
-impl<const CHUNKS: usize, T> Default for SoftHeap<CHUNKS, T> {
+impl<const CORRUPT_EVERY_N: usize, T> Default for SoftHeap<CORRUPT_EVERY_N, T> {
     fn default() -> Self {
         Self { root: None }
     }
 }
 
-impl<const CHUNKS: usize, T: Ord> SoftHeap<CHUNKS, T> {
+impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
     #[must_use]
     pub fn insert(self, item: T) -> Self {
         match self.root {
@@ -221,8 +228,8 @@ impl<const CHUNKS: usize, T: Ord> SoftHeap<CHUNKS, T> {
     }
 }
 
-impl<const CHUNKS: usize, T> From<SoftHeap<CHUNKS, T>> for Vec<T> {
-    fn from(SoftHeap { root }: SoftHeap<CHUNKS, T>) -> Self {
+impl<const CORRUPT_EVERY_N: usize, T> From<SoftHeap<CORRUPT_EVERY_N, T>> for Vec<T> {
+    fn from(SoftHeap { root }: SoftHeap<CORRUPT_EVERY_N, T>) -> Self {
         root.map(Vec::from).unwrap_or_default()
     }
 }

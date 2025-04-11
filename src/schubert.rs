@@ -139,7 +139,7 @@ pub fn normalise_ops<T>(ops: Vec<Operation<T>>) -> Vec<Operation<T>> {
 /// That's the case, when the soft heap corruption guarantee is violated.
 #[must_use]
 pub fn linear_loop<T: Ord + Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
-    const CHUNKS: usize = 8;
+    const CORRUPT_EVERY_N: usize = 16;
 
     // Normalising is not necessary, it just helps makes our debug asserts cleaner.
     // Normalising removes eg leading deletes, before anything has been inserted.
@@ -152,7 +152,7 @@ pub fn linear_loop<T: Ord + Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
 
         if deletes * 2 <= inserts {
             // primal
-            let (left_ops, guaranteed_in) = approximate_heap::<CHUNKS, _>(ops);
+            let (left_ops, guaranteed_in) = approximate_heap::<CORRUPT_EVERY_N, _>(ops);
             ops = left_ops;
             result.extend(guaranteed_in);
             assert!(count_inserts(&ops) <= inserts * 2 / 3);
@@ -161,7 +161,7 @@ pub fn linear_loop<T: Ord + Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
         } else {
             // here we need to dualise.
             let dual_ops = dualise_ops(ops);
-            let (left_over_ops, _guaranteed_out) = approximate_heap::<CHUNKS, _>(dual_ops);
+            let (left_over_ops, _guaranteed_out) = approximate_heap::<CORRUPT_EVERY_N, _>(dual_ops);
             ops = undualise_ops(left_over_ops);
         }
         debug_assert!(count_inserts(&ops) <= inserts * 2 / 3);
@@ -358,7 +358,7 @@ mod tests {
     ) -> Vec<T> {
         // CHUNKS>=8 and EPS = 6 seem to work.
         // Chunks>=6 and EPS=3 also seem to work.
-        let mut pairing: SoftHeap<8, T> = SoftHeap::default();
+        let mut pairing: SoftHeap<3, T> = SoftHeap::default();
         let mut inserts_so_far = 0;
         for op in ops {
             pairing = match op {
