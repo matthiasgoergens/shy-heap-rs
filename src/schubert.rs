@@ -207,7 +207,7 @@ pub fn approximate_heap<const CHUNKS: usize, T: Ord + Debug + Clone>(
             .iter_mut()
             .fold(SoftHeap::default(), |heap, op| match op {
                 Operation::Insert(x) => heap.insert(x),
-                Operation::DeleteMin => heap.delete_min(),
+                Operation::DeleteMin => heap.delete_min().0,
             });
 
     // Use the heap to collect guaranteed survivors from the sequence of operations,
@@ -236,7 +236,7 @@ mod tests {
     use proptest::prelude::{prop_assert_eq, proptest};
     use std::cmp::min;
     use std::collections::{BTreeSet, BinaryHeap};
-    use std::iter::repeat;
+    use std::iter::repeat_n;
 
     pub struct Ops(pub Vec<Operation<u32>>);
 
@@ -257,7 +257,7 @@ mod tests {
             .prop_map(|(n, k)| {
                 let k = min(n, k) as usize;
                 chain!(
-                    repeat(Operation::DeleteMin).take(k),
+                    repeat_n(Operation::DeleteMin, k),
                     (0..n).map(Operation::Insert)
                 )
                 .collect::<Vec<Operation<u32>>>()
@@ -308,6 +308,7 @@ mod tests {
         for op in ops {
             match op {
                 Operation::Insert(x) => {
+                    // We need to reverse the order, because BinaryHeap is a max heap.
                     h.push(Reverse(x));
                 }
                 Operation::DeleteMin => {
@@ -365,7 +366,7 @@ mod tests {
                     inserts_so_far += 1;
                     pairing.insert(x)
                 }
-                Operation::DeleteMin => pairing.delete_min(),
+                Operation::DeleteMin => pairing.delete_min().0,
             };
             let un = pairing.count_uncorrupted();
             let co = pairing.count_corrupted();

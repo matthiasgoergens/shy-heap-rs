@@ -3,8 +3,6 @@
 
 use std::collections::VecDeque;
 
-use itertools::Itertools;
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Pool<T> {
     pub item: T,
@@ -24,12 +22,9 @@ impl<T> Pool<T> {
     }
 
     #[must_use]
-    pub fn merge(self, other: Self) -> Self {
-        // We assume that self.item <= other.item.
-        Self {
-            item: other.item,
-            count: self.count + other.count + 1,
-        }
+    pub fn add_to_pool(mut self, count: usize) -> Self {
+        self.count += count;
+        self
     }
 }
 
@@ -95,82 +90,63 @@ impl<const CHUNKS: usize, T: Ord> Pairing<CHUNKS, T> {
     /// Panics if the heap property is violated (when the key's item is greater than
     /// the merged pairing's key item).
     #[must_use]
-    pub fn corrupt(self) -> Self {
+    pub fn corrupt(self, corrupted: &mut Vec<T>) -> Self {
         let Pairing { key, children } = self;
-        match Self::merge_children(children) {
+        match Self::merge_children(children, corrupted) {
             None => Pairing::from(key),
             Some(pairing) => {
                 assert!(key.item <= pairing.key.item);
+                corrupted.push(key.item);
                 Pairing {
-                    key: key.merge(pairing.key),
+                    key: pairing.key.add_to_pool(key.count),
                     children: pairing.children,
                 }
             }
         }
     }
 
-    pub fn delete_min(self) -> Option<Self> {
+    pub fn delete_min(self) -> (Option<Self>, Vec<T>) {
+        let mut corrupted = vec![];
         let Pairing { key, children } = self;
-        match key.delete_one() {
-            None => Self::merge_children(children),
-            Some(key) => Some(Self { key, children }),
-        }
-    }
-
-    pub fn merge_as_binary_tree<I: IntoIterator<Item = Self>>(items: I) -> Option<Self> {
-        let items: Vec<_> = items
-            .into_iter()
-            .chunks(2)
-            .into_iter()
-            .filter_map(|pair| pair.reduce(Self::meld))
-            .collect();
-        if items.len() < 2 {
-            items.into_iter().reduce(Self::meld)
-        } else {
-            Self::merge_as_binary_tree(items)
-        }
-    }
-
-    /// This variant might be better in practice than `merge_children`,
-    /// but it's harder to analyse in theory.
-    pub fn merge_children_multipass(items: Vec<Self>) -> Option<Self> {
-        Self::merge_as_binary_tree(
-            items
-                .into_iter()
-                .chunks(CHUNKS)
-                .into_iter()
-                .map(Iterator::collect)
-                .filter_map(|chunk: Vec<_>| {
-                    // Only corrupt full chunks.
-                    if chunk.len() < CHUNKS {
-                        Self::merge_as_binary_tree(chunk)
-                    } else {
-                        Self::merge_as_binary_tree(chunk).map(Pairing::corrupt)
-                    }
-                }),
+        (
+            match key.delete_one() {
+                None => Self::merge_children(children, &mut corrupted),
+                Some(key) => Some(Self { key, children }),
+            },
+            corrupted,
         )
     }
 
-    pub fn merge_children(items: Vec<Self>) -> Option<Self> {
-        // Conventional two-pass strategy, but with bigger chunks and corruption.
+    /// Merges the list of children of a (former) node into one node.
+    ///
+    /// See 'A Nearly-Tight Analysis of Multipass Pairing Heaps"
+    /// by Corwin Sinnamon and Robert E. Tarjan.
+    /// <https://epubs.siam.org/doi/epdf/10.1137/1.9781611977554.ch23>
+    ///
+    /// The paper explains why multipass (like here) does give O(log n)
+    /// delete-min.
+    ///
+    /// (Originally O(log n) delete-min was only proven for the two-pass
+    /// variant.)
+    #[must_use]
+    pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        let mut d = VecDeque::from(items);
 
-        let first_pass: Vec<_> = items
-            .into_iter()
-            .chunks(CHUNKS)
-            .into_iter()
-            .map(Iterator::collect)
-            .filter_map(|chunk: Vec<_>| {
-                // Only corrupt full chunks.
-                if chunk.len() < CHUNKS {
-                    Self::merge_as_binary_tree(chunk)
-                } else {
-                    Self::merge_as_binary_tree(chunk).map(Pairing::corrupt)
+        for i in 1.. {
+            match (d.pop_front(), d.pop_front()) {
+                (None, _) => return None,
+                (Some(a), None) => return Some(a),
+                (Some(a), Some(b)) => {
+                    let a = a.meld(b);
+                    d.push_back(if i % CHUNKS == 0 {
+                        a.corrupt(corrupted)
+                    } else {
+                        a
+                    });
                 }
-            })
-            .collect::<Vec<_>>();
-
-        // We need to reverse here, to implement the conventional two-pass strategy.
-        first_pass.into_iter().rev().reduce(Self::meld)
+            }
+        }
+        unreachable!();
     }
 
     pub fn check_heap_property(&self) -> bool {
@@ -227,9 +203,14 @@ impl<const CHUNKS: usize, T: Ord> SoftHeap<CHUNKS, T> {
     }
 
     #[must_use]
-    pub fn delete_min(self) -> Self {
-        Self {
-            root: self.root.and_then(Pairing::delete_min),
+    pub fn delete_min(self) -> (Self, Vec<T>) {
+        // TODO: simplify.
+        match self.root {
+            None => (Self::default(), vec![]),
+            Some(root) => {
+                let (root, corrupted) = root.delete_min();
+                (Self { root }, corrupted)
+            }
         }
     }
     pub fn count_corrupted(&self) -> usize {
