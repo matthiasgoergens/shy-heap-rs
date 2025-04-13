@@ -358,7 +358,8 @@ mod tests {
     ) -> Vec<T> {
         // CHUNKS>=8 and EPS = 6 seem to work.
         // Chunks>=6 and EPS=3 also seem to work.
-        let mut pairing: SoftHeap<3, T> = SoftHeap::default();
+        // Hmm, 0 shouldn't work, but it does?
+        let mut pairing: SoftHeap<1, T> = SoftHeap::default();
         let mut inserts_so_far = 0;
         for op in ops {
             pairing = match op {
