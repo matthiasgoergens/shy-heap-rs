@@ -102,7 +102,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
                 assert!(key.item <= pairing.key.item);
                 corrupted.push(key.item);
                 Pairing {
-                    key: pairing.key.add_to_pool(key.count),
+                    key: pairing.key.add_to_pool(key.count + 1),
                     children: pairing.children,
                 }
             }

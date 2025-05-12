@@ -230,6 +230,8 @@ pub fn approximate_heap<const CHUNKS: usize, T: Ord + Debug + Clone>(
 
 #[cfg(test)]
 mod tests {
+    use crate::pairing::Pairing;
+
     use super::*;
     use itertools::{chain, izip, Itertools};
     use proptest::prelude::{any, Strategy};
@@ -349,8 +351,10 @@ mod tests {
     ///
     /// # Panics
     ///
-    /// Panics if the number of insertions is less than `EPS * corrupted_elements`,
-    /// where `corrupted_elements` is the count of corrupted elements in the heap.
+    /// Panics if the heap corruption exceeds the theoretical guarantee.
+    /// Specifically, it panics when the number of corrupted elements exceeds
+    /// 1/EPS of the total insertions, where EPS is a constant related to
+    /// the soft heap parameter.
     ///
     /// Ie when the soft heap corruption guarantee is violated.
     pub fn simulate_pairing_debug<T: Ord + std::fmt::Debug + Clone>(
@@ -361,7 +365,10 @@ mod tests {
         // CHUNKS>=8 and EPS = 6 seem to work.
         // Chunks>=6 and EPS=3 also seem to work.
         // Hmm, 0 shouldn't work, but it does?
-        let mut pairing: SoftHeap<2, T> = SoftHeap::default();
+        const EPS: usize = 3;
+        // Should really be +1 (?), I think, but we want some slack.
+        const CORRUPT_EVERY_N: usize = EPS + 3;
+        let mut pairing: SoftHeap<CORRUPT_EVERY_N, T> = SoftHeap::default();
         let mut inserts_so_far = 0;
         for op in ops {
             pairing = match op {
@@ -384,7 +391,6 @@ mod tests {
 
             // How does corruption play into this measure of information?
             {
-                const EPS: usize = 6;
                 assert!(
                     inserts_so_far >= EPS * co,
                     "{inserts_so_far} >= {EPS} * {co}; uncorrupted: {un}\n{pairing:?}"
@@ -392,6 +398,26 @@ mod tests {
             }
         }
         Vec::from(pairing)
+    }
+
+    #[test]
+    fn test_enough_corruption() {
+        let n = 1000;
+        let mut pairing: SoftHeap<3, _> = SoftHeap::default();
+        for i in 0..n {
+            pairing = pairing.insert(i);
+        }
+        // let mut corrupted: Vec<i32> = vec![];
+        // pairing = SoftHeap {
+        //     root: pairing.root.map(|x| x.corrupt(&mut corrupted)),
+        // };
+        // assert!(corrupted.len() >= 1);
+        // assert_eq!(corrupted.len(), pairing.count_corrupted());
+
+        let (new_pairing, corrupted) = pairing.delete_min();
+        pairing = new_pairing;
+
+        assert_eq!(corrupted.len(), pairing.count_corrupted());
     }
 
     proptest! {
