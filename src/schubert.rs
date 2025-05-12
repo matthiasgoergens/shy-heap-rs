@@ -230,7 +230,6 @@ pub fn approximate_heap<const CHUNKS: usize, T: Ord + Debug + Clone>(
 
 #[cfg(test)]
 mod tests {
-    use crate::pairing::Pairing;
 
     use super::*;
     use itertools::{chain, izip, Itertools};
@@ -365,7 +364,7 @@ mod tests {
         // CHUNKS>=8 and EPS = 6 seem to work.
         // Chunks>=6 and EPS=3 also seem to work.
         // Hmm, 0 shouldn't work, but it does?
-        const EPS: usize = 3;
+        const EPS: usize = 4;
         // Should really be +1 (?), I think, but we want some slack.
         const CORRUPT_EVERY_N: usize = EPS + 3;
         let mut pairing: SoftHeap<CORRUPT_EVERY_N, T> = SoftHeap::default();
@@ -392,8 +391,9 @@ mod tests {
             // How does corruption play into this measure of information?
             {
                 assert!(
-                    inserts_so_far >= EPS * co,
-                    "{inserts_so_far} >= {EPS} * {co}; uncorrupted: {un}\n{pairing:?}"
+                    EPS * co <= inserts_so_far,
+                    "{EPS} * {co} == {} !<= {inserts_so_far}; uncorrupted: {un}\n{pairing:?}",
+                    EPS * co,
                 );
             }
         }
@@ -418,6 +418,24 @@ mod tests {
         pairing = new_pairing;
 
         assert_eq!(corrupted.len(), pairing.count_corrupted());
+    }
+
+    #[test]
+    fn test_bounded_corruption() {
+        let n = 1000;
+        const EPS: usize = 3;
+        const CORRUPT_EVERY_N: usize = EPS + 1;
+        let mut pairing: SoftHeap<CORRUPT_EVERY_N, _> = SoftHeap::default();
+        for i in 0..n {
+            pairing = pairing.insert(i);
+        }
+
+        while pairing.count_uncorrupted() > 0 {
+            assert!(pairing.count_corrupted() * EPS <= n);
+
+            let (new_pairing, _) = pairing.delete_min();
+            pairing = new_pairing;
+        }
     }
 
     proptest! {
