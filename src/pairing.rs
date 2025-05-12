@@ -1,7 +1,11 @@
 // Soft heaps based on pairing heaps.
 // We do min-heaps by default.
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, iter::once};
+
+use itertools::{chain, Itertools};
+
+use crate::tools::previous_full_multiple;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Pool<T> {
@@ -117,6 +121,20 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         )
     }
 
+    #[must_use]
+    pub fn merge_many<I>(items: I) -> Option<Self>
+    where
+        I: IntoIterator<Item = Self>,
+    {
+        let mut d: VecDeque<_> = items.into_iter().collect();
+        loop {
+            match (d.pop_front(), d.pop_front()) {
+                (Some(a), Some(b)) => d.push_back(a.meld(b)),
+                (a, _) => return a,
+            }
+        }
+    }
+
     /// Merges the list of children of a (former) node into one node.
     ///
     /// See 'A Nearly-Tight Analysis of Multipass Pairing Heaps"
@@ -129,32 +147,42 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     /// (Originally O(log n) delete-min was only proven for the two-pass
     /// variant.)
     #[must_use]
-    pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
-        // TODO: use a different corruption scheme, one based on levels?
-        // We should probably go back to corrupting everything at a specific
-        // level, even if this one here is very tempting.
-        let mut d: VecDeque<_> = items.into_iter().map(|x| (x, 0)).collect();
-
-        // VecDeque::from();
-
-        loop {
-            match (d.pop_front(), d.pop_front()) {
-                (None, _) => return None,
-                (Some((a, _)), None) => return Some(a),
-                (Some((a, _)), Some((b, level))) => {
-                    let a = a.meld(b);
-                    d.push_back((
-                        if level == CORRUPT_EVERY_N {
-                            a.corrupt(corrupted)
-                        } else {
-                            a
-                        },
-                        level + 1,
-                    ));
-                }
-            }
-        }
+    pub fn merge_children(mut items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        let start = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
+        let last = Self::merge_many(items.drain(start..));
+        let binding = items.into_iter().chunks(CORRUPT_EVERY_N);
+        let chunked = binding
+            .into_iter()
+            .filter_map(Self::merge_many)
+            .map(|a| a.corrupt(corrupted));
+        Self::merge_many(chain!(chunked, once(last).flatten()))
     }
+
+    // #[must_use]
+    // pub fn merge_children_old(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+    //     // TODO: use a different corruption scheme, one based on levels?
+    //     // We should probably go back to corrupting everything at a specific
+    //     // level, even if this one here is very tempting.
+    //     let mut d: VecDeque<_> = items.into_iter().map(|x| (x, 0)).collect();
+
+    //     loop {
+    //         match (d.pop_front(), d.pop_front()) {
+    //             (None, _) => return None,
+    //             (Some((a, _)), None) => return Some(a),
+    //             (Some((a, _)), Some((b, level))) => {
+    //                 let a = a.meld(b);
+    //                 d.push_back((
+    //                     if level == CORRUPT_EVERY_N {
+    //                         a.corrupt(corrupted)
+    //                     } else {
+    //                         a
+    //                     },
+    //                     level + 1,
+    //                 ));
+    //             }
+    //         }
+    //     }
+    // }
 
     pub fn check_heap_property(&self) -> bool {
         let Pairing { key, children } = self;

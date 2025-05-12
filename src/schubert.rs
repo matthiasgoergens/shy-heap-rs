@@ -356,10 +356,12 @@ mod tests {
     pub fn simulate_pairing_debug<T: Ord + std::fmt::Debug + Clone>(
         ops: Vec<Operation<T>>,
     ) -> Vec<T> {
+        // TODO: this looks suspicious.  Corrupting ever first (or even every second) element shouldn't corrupt much more in total?
+
         // CHUNKS>=8 and EPS = 6 seem to work.
         // Chunks>=6 and EPS=3 also seem to work.
         // Hmm, 0 shouldn't work, but it does?
-        let mut pairing: SoftHeap<1, T> = SoftHeap::default();
+        let mut pairing: SoftHeap<2, T> = SoftHeap::default();
         let mut inserts_so_far = 0;
         for op in ops {
             pairing = match op {
