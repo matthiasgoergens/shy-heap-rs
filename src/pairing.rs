@@ -158,32 +158,6 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         Self::merge_many(chain!(chunked, once(last).flatten()))
     }
 
-    // #[must_use]
-    // pub fn merge_children_old(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
-    //     // TODO: use a different corruption scheme, one based on levels?
-    //     // We should probably go back to corrupting everything at a specific
-    //     // level, even if this one here is very tempting.
-    //     let mut d: VecDeque<_> = items.into_iter().map(|x| (x, 0)).collect();
-
-    //     loop {
-    //         match (d.pop_front(), d.pop_front()) {
-    //             (None, _) => return None,
-    //             (Some((a, _)), None) => return Some(a),
-    //             (Some((a, _)), Some((b, level))) => {
-    //                 let a = a.meld(b);
-    //                 d.push_back((
-    //                     if level == CORRUPT_EVERY_N {
-    //                         a.corrupt(corrupted)
-    //                     } else {
-    //                         a
-    //                     },
-    //                     level + 1,
-    //                 ));
-    //             }
-    //         }
-    //     }
-    // }
-
     pub fn check_heap_property(&self) -> bool {
         let Pairing { key, children } = self;
         children.iter().all(|child| key.item <= child.key.item)

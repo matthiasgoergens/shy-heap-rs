@@ -300,7 +300,7 @@ mod tests {
     }
 
     pub fn operations() -> impl Strategy<Value = Vec<Operation<u32>>> {
-        proptest::collection::vec(operation(), 0..20_000).prop_map(compress_operations)
+        proptest::collection::vec(operation(), 0..100_000).prop_map(compress_operations)
     }
 
     #[must_use]
@@ -422,9 +422,10 @@ mod tests {
 
     #[test]
     fn test_bounded_corruption() {
-        let n = 1000;
         const EPS: usize = 3;
         const CORRUPT_EVERY_N: usize = EPS + 1;
+
+        let n = 1000;
         let mut pairing: SoftHeap<CORRUPT_EVERY_N, _> = SoftHeap::default();
         for i in 0..n {
             pairing = pairing.insert(i);
