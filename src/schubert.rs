@@ -414,7 +414,7 @@ mod tests {
         // assert!(corrupted.len() >= 1);
         // assert_eq!(corrupted.len(), pairing.count_corrupted());
 
-        let (new_pairing, corrupted) = pairing.delete_min();
+        let (new_pairing, _item, corrupted) = pairing.delete_min();
         pairing = new_pairing;
 
         assert_eq!(corrupted.len(), pairing.count_corrupted());
@@ -434,7 +434,7 @@ mod tests {
         while pairing.count_uncorrupted() > 0 {
             assert!(pairing.count_corrupted() * EPS <= n);
 
-            let (new_pairing, _) = pairing.delete_min();
+            let (new_pairing, _, _) = pairing.delete_min();
             pairing = new_pairing;
         }
     }

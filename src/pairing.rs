@@ -18,11 +18,14 @@ impl<T> Pool<T> {
         Pool { item, count: 0 }
     }
 
-    #[must_use]
-    pub fn delete_one(self) -> Option<Self> {
-        self.count
-            .checked_sub(1)
-            .map(|count| Self { count, ..self })
+    pub fn delete_one(self) -> Result<Self, T> {
+        match self.count.checked_sub(1) {
+            Some(count) => Ok(Self {
+                count,
+                item: self.item,
+            }),
+            None => Err(self.item),
+        }
     }
 
     #[must_use]
@@ -109,16 +112,15 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         }
     }
 
-    pub fn delete_min(self) -> (Option<Self>, Vec<T>) {
+    pub fn delete_min(self) -> (Option<Self>, Option<T>, Vec<T>) {
         let mut corrupted = vec![];
         let Pairing { key, children } = self;
-        (
-            match key.delete_one() {
-                None => Self::merge_children(children, &mut corrupted),
-                Some(key) => Some(Self { key, children }),
-            },
-            corrupted,
-        )
+
+        let (a, b) = match key.delete_one() {
+            Err(item) => (Self::merge_children(children, &mut corrupted), Some(item)),
+            Ok(key) => (Some(Self { key, children }), None),
+        };
+        (a, b, corrupted)
     }
 
     #[must_use]
@@ -212,13 +214,13 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
     }
 
     #[must_use]
-    pub fn delete_min(self) -> (Self, Vec<T>) {
+    pub fn delete_min(self) -> (Self, Option<T>, Vec<T>) {
         // TODO: simplify.
         match self.root {
-            None => (Self::default(), vec![]),
+            None => (Self::default(), None, vec![]),
             Some(root) => {
-                let (root, corrupted) = root.delete_min();
-                (Self { root }, corrupted)
+                let (root, item, corrupted) = root.delete_min();
+                (Self { root }, item, corrupted)
             }
         }
     }
@@ -229,6 +231,9 @@ impl<const CORRUPT_EVERY_N: usize, T> SoftHeap<CORRUPT_EVERY_N, T> {
     }
     pub fn count_uncorrupted(&self) -> usize {
         self.root.as_ref().map_or(0, Pairing::count_uncorrupted)
+    }
+    pub fn is_empty(&self) -> bool {
+        self.root.is_none()
     }
 }
 
