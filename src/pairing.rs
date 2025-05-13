@@ -151,6 +151,9 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     #[must_use]
     pub fn merge_children(mut items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
         let start = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
+        assert_eq!(0, start % CORRUPT_EVERY_N);
+        assert!(items.len() - start < CORRUPT_EVERY_N);
+        assert!(items.len() >= start);
         let last = Self::merge_many(items.drain(start..));
         let binding = items.into_iter().chunks(CORRUPT_EVERY_N);
         let chunked = binding
@@ -244,6 +247,9 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
     }
 }
 impl<const CORRUPT_EVERY_N: usize, T> SoftHeap<CORRUPT_EVERY_N, T> {
+    pub fn count_children(&self) -> usize {
+        self.root.as_ref().map_or(0, |r| r.children.len())
+    }
     pub fn count_corrupted(&self) -> usize {
         debug_assert_eq!(
             self.corrupted,

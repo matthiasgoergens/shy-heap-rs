@@ -46,14 +46,15 @@ pub fn one_batch() {
 
 pub fn interleave() {
     // let n = 10_000_000;
-    const EVERY: usize = 5;
+    const EVERY: usize = 15;
     println!("EVERY: {EVERY}");
-    for e in 0..26 {
+    for e in 0..27 {
         let n = 1 << e;
 
         let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
 
         let mut all_corrupted = 0;
+        let mut non_corrupted_pops = 0;
         let mut c = 0;
         for _i in 0..n {
             c += 1;
@@ -61,24 +62,27 @@ pub fn interleave() {
             // if pairing.root.as_ref().map(|r| r.children.len()).unwrap_or(0) >= EVERY {
             // if c % (EVERY-2) == 0 {
             // if c % 2 == 0 {
-            while pairing.root.as_ref().map(|r| r.children.len()).unwrap_or(0) >= EVERY {
-                let (new_pairing, _item, newly_corrupted) = pairing.delete_min();
+            while pairing.count_children() > 0 && pairing.count_children() % EVERY == 0 {
+                let (new_pairing, item, newly_corrupted) = pairing.delete_min();
                 all_corrupted += newly_corrupted.len();
+                non_corrupted_pops += usize::from(item.is_some());
                 pairing = new_pairing;
             }
+            // }
         }
         let ever_corrupted_fraction = all_corrupted as f64 / c as f64;
         print!(
-            "Corrupted fraction (intermediate): {:.2}%\tn: {c}\tcurrent_corrupted: {:.2}\tsize: {}\t{:.2}%\t\t\t",
-            ever_corrupted_fraction * 100.0,
+            "e: {e} n: {c}\tcurrent_corrupted: {:.2}\tsize: {}\tsize prop: {:.2}%\tCorrupted fraction (intermediate): {:.2}%\t\t\t",
             pairing.count_corrupted() as f64 / c as f64,
             pairing.size,
-            pairing.size as f64 / c as f64 *& 100.0
+            pairing.size as f64 / c as f64 * 100.0,
+            ever_corrupted_fraction * 100.0,
         );
         while !pairing.is_empty() {
             // c += 1;
-            let (new_pairing, _item, newly_corrupted) = pairing.delete_min();
+            let (new_pairing, item, newly_corrupted) = pairing.delete_min();
             all_corrupted += newly_corrupted.len();
+            non_corrupted_pops += usize::from(item.is_some());
             pairing = new_pairing;
             // if !newly_corrupted.is_empty() {
             //     print!(
@@ -96,8 +100,9 @@ pub fn interleave() {
         }
         let ever_corrupted_fraction = all_corrupted as f64 / c as f64;
         println!(
-            "Corrupted fraction: {:.2}%\tn: {c}",
+            "Corrupted fraction: {:.2}%\tn: {c}\tcheck_sum: {}",
             ever_corrupted_fraction * 100.0,
+            (all_corrupted as i64) + (non_corrupted_pops as i64) - (c as i64)
         );
     }
     // println!(
