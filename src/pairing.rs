@@ -192,11 +192,17 @@ impl<const CORRUPT_EVERY_N: usize, T> From<Pairing<CORRUPT_EVERY_N, T>> for Vec<
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct SoftHeap<const CORRUPT_EVERY_N: usize, T> {
     pub root: Option<Pairing<CORRUPT_EVERY_N, T>>,
+    pub size: usize,
+    pub corrupted: usize,
 }
 
 impl<const CORRUPT_EVERY_N: usize, T> Default for SoftHeap<CORRUPT_EVERY_N, T> {
     fn default() -> Self {
-        Self { root: None }
+        Self {
+            root: None,
+            size: 0,
+            corrupted: 0,
+        }
     }
 }
 
@@ -206,9 +212,13 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
         match self.root {
             None => Self {
                 root: Some(Pairing::new(item)),
+                size: 1,
+                corrupted: 0,
             },
             Some(root) => Self {
                 root: Some(root.insert(item)),
+                size: self.size + 1,
+                corrupted: self.corrupted,
             },
         }
     }
@@ -220,25 +230,43 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
             None => (Self::default(), None, vec![]),
             Some(root) => {
                 let (root, item, corrupted) = root.delete_min();
-                (Self { root }, item, corrupted)
+                (
+                    Self {
+                        root,
+                        size: self.size - 1,
+                        corrupted: self.corrupted + corrupted.len() - usize::from(item.is_none()),
+                    },
+                    item,
+                    corrupted,
+                )
             }
         }
     }
 }
 impl<const CORRUPT_EVERY_N: usize, T> SoftHeap<CORRUPT_EVERY_N, T> {
     pub fn count_corrupted(&self) -> usize {
-        self.root.as_ref().map_or(0, Pairing::count_corrupted)
+        debug_assert_eq!(
+            self.corrupted,
+            self.root.as_ref().map_or(0, Pairing::count_corrupted)
+        );
+        self.corrupted
     }
     pub fn count_uncorrupted(&self) -> usize {
-        self.root.as_ref().map_or(0, Pairing::count_uncorrupted)
+        debug_assert_eq!(
+            self.root.as_ref().map_or(0, Pairing::count_uncorrupted),
+            self.size - self.corrupted
+        );
+        self.size - self.count_corrupted()
     }
     pub fn is_empty(&self) -> bool {
+        debug_assert_eq!(self.size, self.count_uncorrupted() + self.count_corrupted());
+        debug_assert_eq!(self.size > 0, self.root.is_some());
         self.root.is_none()
     }
 }
 
 impl<const CORRUPT_EVERY_N: usize, T> From<SoftHeap<CORRUPT_EVERY_N, T>> for Vec<T> {
-    fn from(SoftHeap { root }: SoftHeap<CORRUPT_EVERY_N, T>) -> Self {
+    fn from(SoftHeap { root, .. }: SoftHeap<CORRUPT_EVERY_N, T>) -> Self {
         root.map(Vec::from).unwrap_or_default()
     }
 }
