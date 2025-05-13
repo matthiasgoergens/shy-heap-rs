@@ -222,6 +222,8 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
             }
         }
     }
+}
+impl<const CORRUPT_EVERY_N: usize, T> SoftHeap<CORRUPT_EVERY_N, T> {
     pub fn count_corrupted(&self) -> usize {
         self.root.as_ref().map_or(0, Pairing::count_corrupted)
     }

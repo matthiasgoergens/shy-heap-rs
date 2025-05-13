@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 itertools = "0.14"
 proptest = "1.6"
-rand = "0.9.0"
+rand = "0.9.1"
 
 [profile.test]
 lto = "thin"
