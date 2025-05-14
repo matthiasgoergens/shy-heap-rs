@@ -1,4 +1,5 @@
 use softheap::pairing::SoftHeap;
+use seq_macro::seq; // Add import for seq_macro
 
 pub fn one_batch() {
     // let n = 10_000_000;
@@ -46,9 +47,9 @@ pub fn one_batch() {
 
 pub fn interleave() {
     // let n = 10_000_000;
-    const EVERY: usize = 15;
+    const EVERY: usize = 32;
     println!("EVERY: {EVERY}");
-    for e in 0..27 {
+    for e in 0..30 {
         let n = 1 << e;
 
         let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
@@ -112,7 +113,55 @@ pub fn interleave() {
     // );
 }
 
+pub fn interleave1<const EVERY: usize>() -> f64 {
+    // let n = 10_000_000;
+    // const EVERY: usize = 15;
+    // println!("EVERY: {EVERY}");
+    let e: usize = 22;
+
+    let n = 1 << e;
+
+    let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
+
+    let mut all_corrupted = 0;
+    let mut _non_corrupted_pops = 0; // Changed to _non_corrupted_pops
+    let mut c = 0;
+    for _i in 0..n {
+        c += 1;
+        pairing = pairing.insert(c);
+        // if pairing.root.as_ref().map(|r| r.children.len()).unwrap_or(0) >= EVERY {
+        // if c % (EVERY-2) == 0 {
+        // if c % 2 == 0 {
+        while pairing.count_children() > 0 && pairing.count_children() % EVERY == 0 {
+            let (new_pairing, item, newly_corrupted) = pairing.delete_min();
+            all_corrupted += newly_corrupted.len();
+            _non_corrupted_pops += usize::from(item.is_some()); // Changed to _non_corrupted_pops
+            pairing = new_pairing;
+        }
+    }
+    while !pairing.is_empty() {
+        let (new_pairing, item, newly_corrupted) = pairing.delete_min();
+        all_corrupted += newly_corrupted.len();
+        _non_corrupted_pops += usize::from(item.is_some()); // Changed to _non_corrupted_pops
+        pairing = new_pairing;
+    }
+    all_corrupted as f64 / c as f64
+}
+
+// The run_for_range macro is no longer needed and can be removed.
+
+pub fn interleave_n() {
+    seq!(N in 2..=256 {
+        let result = interleave1::<N>();
+        let lresult = -result.log2();
+        let l_n = (N as f64).log2();
+        let x = N as f64 * result;
+        println!("{:2} {:6.2}%\t{lresult:6.2}\t{l_n:6.2}\t{x:6.2}", N, result * 100.0);
+    });
+}
+
 pub fn main() {
     // one_batch();
-    interleave();
+    // interleave();
+    interleave_n();
 }
