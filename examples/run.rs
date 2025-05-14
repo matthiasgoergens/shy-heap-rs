@@ -1,3 +1,6 @@
+// Run as
+//  RUST_MIN_STACK=16777216 cargo run --release --example run
+
 use softheap::pairing::SoftHeap;
 use seq_macro::seq; // Add import for seq_macro
 
@@ -151,12 +154,13 @@ pub fn interleave1<const EVERY: usize>() -> f64 {
 // The run_for_range macro is no longer needed and can be removed.
 
 pub fn interleave_n() {
+    println!(" N\tCorrupted fraction\tlog2(1/N)\tlog2(N)\tN*result");
     seq!(N in 2..=256 {
         let result = interleave1::<N>();
         let lresult = -result.log2();
         let l_n = (N as f64).log2();
         let x = N as f64 * result;
-        println!("{:2} {:6.2}%\t{lresult:6.2}\t{l_n:6.2}\t{x:6.2}", N, result * 100.0);
+        println!("{:2}\t\t{:6.2}%\t{lresult:6.2}\t{l_n:6.2}\t{x:6.2}", N, result * 100.0);
     });
 }
 

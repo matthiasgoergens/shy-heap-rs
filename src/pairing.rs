@@ -150,9 +150,10 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     /// variant.)
     #[must_use]
     pub fn merge_children(mut items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
-        let start = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
+        // let start = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
+        let start = items.len().next_multiple_of(CORRUPT_EVERY_N).saturating_sub(CORRUPT_EVERY_N);
         assert_eq!(0, start % CORRUPT_EVERY_N);
-        assert!(items.len() - start < CORRUPT_EVERY_N);
+        assert!(items.len() - start <= CORRUPT_EVERY_N);
         assert!(items.len() >= start);
         let last = Self::merge_many(items.drain(start..));
         let binding = items.into_iter().chunks(CORRUPT_EVERY_N);
