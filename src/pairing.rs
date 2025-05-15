@@ -5,7 +5,7 @@ use std::{collections::VecDeque, iter::once};
 
 use itertools::{chain, Itertools};
 
-use crate::tools::previous_full_multiple;
+// use crate::tools::previous_full_multiple;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Pool<T> {
@@ -149,7 +149,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     /// (Originally O(log n) delete-min was only proven for the two-pass
     /// variant.)
     #[must_use]
-    pub fn merge_children(mut items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+    pub fn merge_children_pass_h(mut items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
         // let start = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
         let start = items.len().next_multiple_of(CORRUPT_EVERY_N).saturating_sub(CORRUPT_EVERY_N);
         assert_eq!(0, start % CORRUPT_EVERY_N);
@@ -162,6 +162,46 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
             .filter_map(Self::merge_many)
             .map(|a| a.corrupt(corrupted));
         Self::merge_many(chain!(chunked, once(last).flatten()))
+    }
+
+    #[must_use]
+    pub fn merge_children_evenly_spaced(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        let mut d: VecDeque<_> = VecDeque::from(items);
+        for c in 1.. {
+            let next = match (d.pop_front(), d.pop_front()) {
+                (Some(a), Some(b)) => a.meld(b),
+                (a, _) => return a,
+            };
+            d.push_back(if c % CORRUPT_EVERY_N == 0 {
+                next.corrupt(corrupted)
+            } else {
+                next
+            });
+        }
+        unreachable!()
+    }
+
+    // Corrupt all at the end.
+    #[must_use]
+    pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        let l = items.len().max(1);
+        let mut d: VecDeque<_> = VecDeque::from(items);
+        for c in 1.. {
+            assert!(c <= l, "c: {c}, l: {l}");
+            let next = match (d.pop_front(), d.pop_front()) {
+                (Some(a), Some(b)) => a.meld(b),
+                (a, _) => {
+                    assert_eq!(c, l);
+                    return a;
+                },
+            };
+            d.push_back(if c % CORRUPT_EVERY_N == 0 {
+                next.corrupt(corrupted)
+            } else {
+                next
+            });
+        }
+        unreachable!()
     }
 
     pub fn check_heap_property(&self) -> bool {
