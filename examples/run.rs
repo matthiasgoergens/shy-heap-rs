@@ -9,7 +9,7 @@ use seq_macro::seq; // Add import for seq_macro
 
 pub fn one_batch() {
     // let n = 10_000_000;
-    const EVERY: usize = 5;
+    const EVERY: usize = 8;
     println!("EVERY: {EVERY} one_batch random");
     for e in 0..27 {
         let n = 1 << e;
@@ -207,19 +207,20 @@ pub fn interleave_n() {
 
 pub fn sort_n() {
     println!("Sort N");
-    println!(" N\tCorrupted fraction\tlog2(1/N)\tlog2(N)\tN*result\tmax_frac");
+    println!(" N\tCorrupted fraction\tlog2(1/N)\tlog2(N)\tN*result\tmax_frac\tmax_frac*N");
     seq!(N in 2..=256 {
         let (result, max_frac) = sort1::<N>();
         let lresult = -result.log2();
         let l_n = (N as f64).log2();
         let x = N as f64 * result;
-        println!("{:2}\t\t{:6.2}%\t{lresult:6.2}\t{l_n:6.2}\t{x:6.2}\t{:6.2}", N, result * 100.0, max_frac * 100.0);
+        let xx = max_frac * N as f64;
+        println!("{:2}\t\t{:6.2}%\t{lresult:6.2}\t{l_n:6.2}\t{x:6.2}\t{:6.2}\t{xx:6.2}", N, result * 100.0, max_frac * 100.0);
     });
 }
 
 pub fn main() {
-    one_batch();
+    // one_batch();
     // interleave();
     // interleave_n();
-    // sort_n();
+    sort_n();
 }

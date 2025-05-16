@@ -151,7 +151,10 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     #[must_use]
     pub fn merge_children_pass_h(mut items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
         // let start = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
-        let start = items.len().next_multiple_of(CORRUPT_EVERY_N).saturating_sub(CORRUPT_EVERY_N);
+        let start = items
+            .len()
+            .next_multiple_of(CORRUPT_EVERY_N)
+            .saturating_sub(CORRUPT_EVERY_N);
         assert_eq!(0, start % CORRUPT_EVERY_N);
         assert!(items.len() - start <= CORRUPT_EVERY_N);
         assert!(items.len() >= start);
@@ -165,7 +168,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     }
 
     #[must_use]
-    pub fn merge_children_evenly_spaced(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+    pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
         let mut d: VecDeque<_> = VecDeque::from(items);
         for c in 1.. {
             let next = match (d.pop_front(), d.pop_front()) {
@@ -183,9 +186,14 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
 
     // Corrupt all at the end.
     #[must_use]
-    pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+    pub fn merge_children_at_end(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
         let l = items.len().max(1);
         let mut d: VecDeque<_> = VecDeque::from(items);
+        // Total = l-1 comparisons.
+        // So we need floor(l / EVERY) corruptions at the end.
+        let end = l - l / CORRUPT_EVERY_N;
+        assert!(end <= l, "end: {end}, l: {l}");
+        assert!((l - end) * CORRUPT_EVERY_N <= l);
         for c in 1.. {
             assert!(c <= l, "c: {c}, l: {l}");
             let next = match (d.pop_front(), d.pop_front()) {
@@ -193,9 +201,9 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
                 (a, _) => {
                     assert_eq!(c, l);
                     return a;
-                },
+                }
             };
-            d.push_back(if c % CORRUPT_EVERY_N == 0 {
+            d.push_back(if c > end {
                 next.corrupt(corrupted)
             } else {
                 next
