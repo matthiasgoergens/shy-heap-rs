@@ -245,9 +245,9 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
 
     pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
         // Self::merge_children_evenly(items, corrupted)
-        // Self::merge_children_two_pass(items, corrupted)
+        Self::merge_children_two_pass(items, corrupted)
         // Self::merge_children_two_pass_x(items, corrupted)
-        Self::merge_children_one_pass(items, corrupted)
+        // Self::merge_children_one_pass(items, corrupted)
     }
 
     // Corrupt all at the end.
