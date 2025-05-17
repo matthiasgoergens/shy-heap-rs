@@ -168,7 +168,14 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     }
 
     #[must_use]
-    pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+    // multi-pass, evenly distributed corruption
+    pub fn merge_children_evenly(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        // let mut d: VecDeque<_> = items
+        //     .into_iter()
+        //     .chunks(2)
+        //     .into_iter()
+        //     .filter_map(|chunk| chunk.reduce(Self::meld))
+        //     .collect();
         let mut d: VecDeque<_> = VecDeque::from(items);
         for c in 1.. {
             let next = match (d.pop_front(), d.pop_front()) {
@@ -182,6 +189,65 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
             });
         }
         unreachable!()
+    }
+
+    #[must_use]
+    pub fn merge_children_two_pass(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        items
+            .into_iter()
+            .chunks(2)
+            .into_iter()
+            .filter_map(|chunk| chunk.reduce(Self::meld))
+            .chunks(CORRUPT_EVERY_N)
+            .into_iter()
+            .fold(None, |acc, item| {
+                chain!(acc.map(|acc| acc.corrupt(corrupted)), item).reduce(Self::meld)
+            })
+    }
+
+
+    #[must_use]
+    // This one does not work!  Leads to 100% corruption.
+    // Probably for the same reason it leads to amortised O(n) delete-min
+    pub fn merge_children_one_pass(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        items
+            .into_iter()
+            // .chunks(2)
+            // .into_iter()
+            // .filter_map(|chunk| chunk.reduce(Self::meld))
+            .chunks(CORRUPT_EVERY_N)
+            .into_iter()
+            .fold(None, |acc, item| {
+                chain!(acc.map(|acc| acc.corrupt(corrupted)), item).reduce(Self::meld)
+            })
+    }
+
+    #[must_use]
+    // This one does not work!  Leads to 100% corruption.
+    pub fn merge_children_two_pass_degree(
+        items: Vec<Self>,
+        corrupted: &mut Vec<T>,
+    ) -> Option<Self> {
+        items
+            .into_iter()
+            .chunks(2)
+            .into_iter()
+            .filter_map(|chunk| chunk.reduce(Self::meld))
+            .reduce(|a, b| {
+                let acc = a.meld(b);
+                if acc.children.len() > CORRUPT_EVERY_N {
+                    acc.corrupt(corrupted)
+                } else {
+                    acc
+                }
+            })
+    }
+
+    pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        // Self::merge_children_evenly(items, corrupted)
+        // Self::merge_children_two_pass(items, corrupted)
+        // Self::merge_children_two_pass_x(items, corrupted)
+        Self::merge_children_one_pass(items, corrupted)
     }
 
     // Corrupt all at the end.

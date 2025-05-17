@@ -9,7 +9,7 @@ use seq_macro::seq; // Add import for seq_macro
 
 pub fn one_batch() {
     // let n = 10_000_000;
-    const EVERY: usize = 8;
+    const EVERY: usize = 32;
     println!("EVERY: {EVERY} one_batch random");
     for e in 0..27 {
         let n = 1 << e;
@@ -219,8 +219,8 @@ pub fn sort_n() {
 }
 
 pub fn main() {
-    // one_batch();
+    one_batch();
     // interleave();
     // interleave_n();
-    sort_n();
+    // sort_n();
 }
