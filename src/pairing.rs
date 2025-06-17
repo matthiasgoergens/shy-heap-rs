@@ -112,6 +112,12 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         }
     }
 
+    pub fn heavy_delete_min(self) -> (Option<Self>, Pool<T>, Vec<T>) {
+        let mut corrupted = vec![];
+        let Pairing { key, children } = self;
+        (Self::merge_children(children, &mut corrupted), key, corrupted)
+    }
+
     pub fn delete_min(self) -> (Option<Self>, Option<T>, Vec<T>) {
         let mut corrupted = vec![];
         let Pairing { key, children } = self;
@@ -338,6 +344,25 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
                 size: self.size + 1,
                 corrupted: self.corrupted,
             },
+        }
+    }
+
+    #[must_use]
+    pub fn heavy_delete_min(self) -> (Self, Option<T>, Vec<T>) {
+        match self.root {
+            None => (Self::default(), None, vec![]),
+            Some(root) => {
+                let (root, pool, corrupted) = root.heavy_delete_min();
+                (
+                    Self {
+                        root,
+                        size: self.size - pool.count - 1,
+                        corrupted: self.corrupted + corrupted.len() - usize::from(pool.count),
+                    },
+                    Some(pool.item),
+                    corrupted,
+                )
+            }
         }
     }
 
