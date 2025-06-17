@@ -9,7 +9,9 @@ use seq_macro::seq; // Add import for seq_macro
 
 pub fn one_batch() {
     // let n = 10_000_000;
-    const EVERY: usize = 32;
+    const EVERY: usize = 4;
+    const RAW: f64 = 1.0/(EVERY as f64);
+    const EXPECTED_CORRUPTED_FRACTION: f64 = RAW / (1.0-RAW);
     println!("EVERY: {EVERY} one_batch random");
     for e in 0..27 {
         let n = 1 << e;
@@ -47,10 +49,10 @@ pub fn one_batch() {
         }
         let ever_corrupted_fraction = all_corrupted as f64 / n as f64;
         print!(
-            "Corrupted fraction: {:.2}%\te: {e}\tn: {n:10}\t",
+            "Corrupted fraction: {:.2}%\texponent: {e}\tn: {n:10}\t",
             ever_corrupted_fraction * 100.0
         );
-        println!("Max corrupted fraction: {:6.2}%", max_corrupted as f64 / n as f64 * 100.0);
+        println!("Max corrupted fraction: {:6.2}%\t{:6.2}%", max_corrupted as f64 / n as f64 * 100.0, EXPECTED_CORRUPTED_FRACTION * 100.0);
     }
     // println!(
     //     "Total corrupted: {all_corrupted}\tUncorrupted: {}\tCorrupted: {}",

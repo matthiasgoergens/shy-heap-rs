@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 itertools = "0.14"
-proptest = "1.6"
+proptest = "1.7"
 rand = "0.9.1"
 seq-macro = "0.3.6"
 
