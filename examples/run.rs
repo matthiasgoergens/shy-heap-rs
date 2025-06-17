@@ -3,15 +3,17 @@
 
 use std::cmp::max;
 
+use itertools::enumerate;
 use rand::seq::SliceRandom;
-use softheap::pairing::SoftHeap;
-use seq_macro::seq; // Add import for seq_macro
+use seq_macro::seq;
+use softheap::pairing::SoftHeap; // Add import for seq_macro
 
 pub fn one_batch() {
     // let n = 10_000_000;
     const EVERY: usize = 4;
-    const RAW: f64 = 1.0/(EVERY as f64);
-    const EXPECTED_CORRUPTED_FRACTION: f64 = RAW / (1.0-RAW);
+    const RAW: f64 = 1.0 / (EVERY as f64);
+    // const EXPECTED_CORRUPTED_FRACTION: f64 = RAW / (1.0-RAW);
+    const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - 1.0);
     println!("EVERY: {EVERY} one_batch random");
     for e in 0..27 {
         let n = 1 << e;
@@ -20,8 +22,9 @@ pub fn one_batch() {
         let mut x = (0..n).collect::<Vec<_>>();
 
         x.shuffle(&mut rand::rng());
-        for i in x {
-            pairing = pairing.insert(i);
+        for (_index, item) in enumerate(x) {
+            pairing = pairing.insert(item);
+            // pairing = pairing.insert(j);
         }
         let mut all_corrupted = 0;
         let mut max_corrupted = 0;
@@ -29,10 +32,10 @@ pub fn one_batch() {
         // let mut c = 0;
         while !pairing.is_empty() {
             // c += 1;
-            let (new_pairing, _item, newly_corrupted) = pairing.delete_min();
+            let (new_pairing, _item, newly_corrupted) = pairing.heavy_delete_min();
             all_corrupted += newly_corrupted.len();
             pairing = new_pairing;
-                max_corrupted = max(max_corrupted, pairing.count_corrupted());
+            max_corrupted = max(max_corrupted, pairing.count_corrupted());
             // if !newly_corrupted.is_empty() {
             //     print!(
             //         "{c}\tTotal corrupted: {all_corrupted}\tNewly corrupted: {}\t",
@@ -52,7 +55,11 @@ pub fn one_batch() {
             "Corrupted fraction: {:.2}%\texponent: {e}\tn: {n:10}\t",
             ever_corrupted_fraction * 100.0
         );
-        println!("Max corrupted fraction: {:6.2}%\t{:6.2}%", max_corrupted as f64 / n as f64 * 100.0, EXPECTED_CORRUPTED_FRACTION * 100.0);
+        println!(
+            "Max corrupted fraction: {:6.2}%\t?< {:6.2}%",
+            max_corrupted as f64 / n as f64 * 100.0,
+            EXPECTED_CORRUPTED_FRACTION * 100.0
+        );
     }
     // println!(
     //     "Total corrupted: {all_corrupted}\tUncorrupted: {}\tCorrupted: {}",
@@ -79,7 +86,7 @@ pub fn interleave() {
             // if pairing.root.as_ref().map(|r| r.children.len()).unwrap_or(0) >= EVERY {
             // if c % (EVERY-2) == 0 {
             if c % 2 == 0 {
-            // while pairing.count_children() > 0 && pairing.count_children() % EVERY == 0 {
+                // while pairing.count_children() > 0 && pairing.count_children() % EVERY == 0 {
                 let (new_pairing, item, newly_corrupted) = pairing.delete_min();
                 all_corrupted += newly_corrupted.len();
                 non_corrupted_pops += usize::from(item.is_some());
@@ -148,8 +155,8 @@ pub fn interleave1<const EVERY: usize>() -> f64 {
         // if pairing.root.as_ref().map(|r| r.children.len()).unwrap_or(0) >= EVERY {
         // if c % (EVERY-2) == 0 {
         if c % 2 == 0 {
-        // while pairing.count_children() > EVERY && pairing.count_children() % EVERY == 0 {
-        // while pairing.count_children() > EVERY {
+            // while pairing.count_children() > EVERY && pairing.count_children() % EVERY == 0 {
+            // while pairing.count_children() > EVERY {
             let (new_pairing, item, newly_corrupted) = pairing.delete_min();
             all_corrupted += newly_corrupted.len();
             _non_corrupted_pops += usize::from(item.is_some()); // Changed to _non_corrupted_pops
@@ -193,7 +200,10 @@ pub fn sort1<const EVERY: usize>() -> (f64, f64) {
         pairing = new_pairing;
         max_corrupted = max(max_corrupted, pairing.count_corrupted());
     }
-    (all_corrupted as f64 / n as f64, max_corrupted as f64 / n as f64)
+    (
+        all_corrupted as f64 / n as f64,
+        max_corrupted as f64 / n as f64,
+    )
 }
 
 pub fn interleave_n() {

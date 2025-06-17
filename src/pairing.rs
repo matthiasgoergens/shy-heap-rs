@@ -115,7 +115,11 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     pub fn heavy_delete_min(self) -> (Option<Self>, Pool<T>, Vec<T>) {
         let mut corrupted = vec![];
         let Pairing { key, children } = self;
-        (Self::merge_children(children, &mut corrupted), key, corrupted)
+        (
+            Self::merge_children(children, &mut corrupted),
+            key,
+            corrupted,
+        )
     }
 
     pub fn delete_min(self) -> (Option<Self>, Option<T>, Vec<T>) {
@@ -211,7 +215,6 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
             })
     }
 
-
     #[must_use]
     // This one does not work!  Leads to 100% corruption.
     // Probably for the same reason it leads to amortised O(n) delete-min
@@ -250,9 +253,15 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     }
 
     pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        // This one seems to work, but it has a higher corruption rate for our parameter.
         // Self::merge_children_evenly(items, corrupted)
+
+        // These two work:
+        // Self::merge_children_pass_h(items, corrupted)
         Self::merge_children_two_pass(items, corrupted)
-        // Self::merge_children_two_pass_x(items, corrupted)
+
+        // // These two do not work!
+        // Self::merge_children_two_pass_degree(items, corrupted)
         // Self::merge_children_one_pass(items, corrupted)
     }
 
