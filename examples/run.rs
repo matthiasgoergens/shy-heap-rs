@@ -72,16 +72,16 @@ pub fn one_batch() {
 
 pub fn one_batch_meld() {
     // let n = 10_000_000;
-    const EVERY: usize = 6;
+    const EVERY: usize = 3;
     const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
     // const EXPECTED_CORRUPTED_FRACTION: f64 = RAW / (1.0-RAW);
     // Wrong formula.
     const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - ELOG as f64);
-    println!("EVERY: {EVERY} one_batch random");
+    println!("EVERY: {EVERY} one_batch random meld");
     for e in 0..28 {
         let n = 1 << e;
 
-        let mut x: Vec<SoftHeap<ELOG, i32>> = (0..n).map(SoftHeap::singleton).collect::<Vec<_>>();
+        let mut x: Vec<SoftHeap<EVERY, i32>> = (0..n).map(SoftHeap::singleton).collect::<Vec<_>>();
 
         while x.len() > 1 {
             let a = sample_swap_pop(&mut x);
