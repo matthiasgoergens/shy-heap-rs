@@ -376,6 +376,27 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     }
 
     #[must_use]
+    pub fn merge_children_multi_grouped(
+        items: Vec<Self>,
+        corrupted: &mut Vec<T>,
+    ) -> Option<Self> {
+        const GRACE_CHUNKS: usize = 2;
+        let binding = items.into_iter().chunks(GRACE_CHUNKS);
+        let mut queue: VecDeque<_> = binding.into_iter().filter_map(Self::merge_many).collect();
+        loop {
+            if queue.len() < CORRUPT_EVERY_N {
+                return Self::merge_many(queue);
+            }
+            if let Some(p) = Self::merge_many(queue.drain(..CORRUPT_EVERY_N)) {
+                queue.push_back(p.corrupt(corrupted));
+                // queue.push_front(p.corrupt(corrupted));
+            } else {
+                unreachable!("We should have have a non-empty heap after merging a full chunk.");
+            }
+        }
+    }
+
+    #[must_use]
     // This one does not work!  Leads to 100% corruption.
     // Probably for the same reason it leads to amortised O(n) delete-min
     pub fn merge_children_one_pass(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
@@ -421,7 +442,9 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         // Self::merge_children_pass_h_queue_simple(items, corrupted)
         // Self::merge_children_two_pass(items, corrupted)
         // Self::merge_children_two_pass_grouped(items, corrupted)
-        Self::merge_children_two_pass_grouped_last(items, corrupted)
+        // Self::merge_children_two_pass_grouped_last(items, corrupted)
+
+        Self::merge_children_multi_grouped(items, corrupted)
 
         // These ones should maybe work, but doesn't:
         // Self::merge_children_pass_h_queue(items, corrupted)

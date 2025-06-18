@@ -10,10 +10,11 @@ use softheap::pairing::SoftHeap; // Add import for seq_macro
 
 pub fn one_batch() {
     // let n = 10_000_000;
-    const EVERY: usize = 32;
+    const EVERY: usize = 4;
     const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
     // const EXPECTED_CORRUPTED_FRACTION: f64 = RAW / (1.0-RAW);
-    const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - ELOG as f64 - 1.0);
+    // Wrong formula.
+    const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - ELOG as f64);
     println!("EVERY: {EVERY} one_batch random");
     for e in 0..28 {
         let n = 1 << e;
@@ -71,7 +72,7 @@ pub fn one_batch() {
 
 pub fn interleave() {
     // let n = 10_000_000;
-    const EVERY: usize = 32;
+    const EVERY: usize = 4;
     println!("EVERY: {EVERY}");
     for e in 0..30 {
         let n = 1 << e;
