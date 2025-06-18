@@ -1,6 +1,9 @@
 // Run as
 //  RUST_MIN_STACK=16777216 cargo run --release --example run
 
+const EVERY: usize = 3;
+const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
+
 use std::cmp::max;
 
 use itertools::enumerate;
@@ -10,11 +13,13 @@ use softheap::pairing::SoftHeap; // Add import for seq_macro
 
 pub fn one_batch() {
     // let n = 10_000_000;
-    const EVERY: usize = 6;
-    const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
+    // const EVERY: usize = 6;
+    // const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
     // const EXPECTED_CORRUPTED_FRACTION: f64 = RAW / (1.0-RAW);
     // Wrong formula.
-    const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - ELOG as f64);
+    // const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - ELOG as f64);
+    // const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (3.0 * EVERY as f64 - ELOG as f64 - 2.0);
+    const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64);
     println!("EVERY: {EVERY} one_batch random");
     for e in 0..28 {
         let n = 1 << e;
@@ -58,7 +63,7 @@ pub fn one_batch() {
             ever_corrupted_fraction * 100.0
         );
         println!(
-            "Max corrupted fraction: {:6.2}%\t?< {:6.2}%",
+            "Max corrupted fraction: {:6.5}%\t?< {:6.5}%",
             max_corrupted as f64 / n as f64 * 100.0,
             EXPECTED_CORRUPTED_FRACTION * 100.0
         );
@@ -72,8 +77,6 @@ pub fn one_batch() {
 
 pub fn one_batch_meld() {
     // let n = 10_000_000;
-    const EVERY: usize = 3;
-    const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
     // const EXPECTED_CORRUPTED_FRACTION: f64 = RAW / (1.0-RAW);
     // Wrong formula.
     const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - ELOG as f64);
@@ -121,7 +124,7 @@ pub fn one_batch_meld() {
             ever_corrupted_fraction * 100.0
         );
         println!(
-            "Max corrupted fraction: {:6.2}%\t?< {:6.2}%",
+            "Max corrupted fraction: {:6.5}%\t?< {:6.5}%",
             max_corrupted as f64 / n as f64 * 100.0,
             EXPECTED_CORRUPTED_FRACTION * 100.0
         );
@@ -300,9 +303,9 @@ pub fn sort_n() {
 }
 
 pub fn main() {
-    // one_batch();
+    one_batch();
     // interleave();
     // interleave_n();
     // sort_n();
-    one_batch_meld();
+    // one_batch_meld();
 }

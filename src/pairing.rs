@@ -386,16 +386,46 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
 
     #[must_use]
     pub fn merge_children_multi_grouped(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
-        const GRACE_CHUNKS: usize = 2;
-        let binding = items.into_iter().chunks(GRACE_CHUNKS);
+        const EVERY_SECOND_LAYER: usize = 4;
+        let binding = items.into_iter().chunks(CORRUPT_EVERY_N);
         let mut queue: VecDeque<_> = binding.into_iter().filter_map(Self::merge_many).collect();
         loop {
-            if queue.len() < CORRUPT_EVERY_N {
+            if queue.len() < EVERY_SECOND_LAYER {
                 return Self::merge_many(queue);
             }
-            if let Some(p) = Self::merge_many(queue.drain(..CORRUPT_EVERY_N)) {
+            let res = Self::merge_many(queue.drain(..EVERY_SECOND_LAYER))
+                .expect("We should have have a non-empty heap after merging a full chunk.")
+                .corrupt(corrupted);
+            queue.push_back(res);
+            // if let Some(p) = Self::merge_many(queue.drain(..EVERY_SECOND_LAYER)) {
+            //     // queue.push_back(p.corrupt(corrupted));
+            //     queue.push_back(p.corrupt(corrupted));
+            // } else {
+            //     unreachable!("We should have have a non-empty heap after merging a full chunk.");
+            // }
+        }
+    }
+
+    #[must_use]
+    pub fn merge_children_multi_grouped_less_grace(
+        items: Vec<Self>,
+        corrupted: &mut Vec<T>,
+    ) -> Option<Self> {
+        const EVERY_SECOND_LAYER: usize = 4;
+        let binding = items.into_iter().chunks(CORRUPT_EVERY_N);
+        let mut queue: VecDeque<_> = binding.into_iter().filter_map(Self::merge_many).collect();
+        loop {
+            if queue.len() < EVERY_SECOND_LAYER {
+                return Self::merge_many(queue);
+            };
+
+            if let Some(p) = Self::merge_many(
+                queue
+                    .drain(..EVERY_SECOND_LAYER.min(queue.len()))
+                    .map(|p| p.corrupt(corrupted)),
+            ) {
                 // queue.push_back(p.corrupt(corrupted));
-                queue.push_front(p.corrupt(corrupted));
+                queue.push_front(p);
             } else {
                 unreachable!("We should have have a non-empty heap after merging a full chunk.");
             }
@@ -451,6 +481,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         // Self::merge_children_two_pass_grouped_last(items, corrupted)
 
         Self::merge_children_multi_grouped(items, corrupted)
+        // Self::merge_children_multi_grouped_less_grace(items, corrupted)
 
         // These ones should maybe work, but doesn't:
         // Self::merge_children_pass_h_queue(items, corrupted)
