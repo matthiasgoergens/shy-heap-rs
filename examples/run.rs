@@ -10,12 +10,12 @@ use softheap::pairing::SoftHeap; // Add import for seq_macro
 
 pub fn one_batch() {
     // let n = 10_000_000;
-    const EVERY: usize = 4;
-    const RAW: f64 = 1.0 / (EVERY as f64);
+    const EVERY: usize = 32;
+    const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
     // const EXPECTED_CORRUPTED_FRACTION: f64 = RAW / (1.0-RAW);
-    const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - 1.0);
+    const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - ELOG as f64 - 1.0);
     println!("EVERY: {EVERY} one_batch random");
-    for e in 0..27 {
+    for e in 0..28 {
         let n = 1 << e;
 
         let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
@@ -33,6 +33,7 @@ pub fn one_batch() {
         while !pairing.is_empty() {
             // c += 1;
             let (new_pairing, _item, newly_corrupted) = pairing.heavy_delete_min();
+            // let (new_pairing, _item, newly_corrupted) = pairing.delete_min();
             all_corrupted += newly_corrupted.len();
             pairing = new_pairing;
             max_corrupted = max(max_corrupted, pairing.count_corrupted());

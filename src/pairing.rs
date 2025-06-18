@@ -4,6 +4,9 @@
 use std::{collections::VecDeque, iter::once};
 
 use itertools::{chain, Itertools};
+use rand::seq::SliceRandom;
+
+use crate::tools::previous_full_multiple;
 
 // use crate::tools::previous_full_multiple;
 
@@ -159,15 +162,19 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     /// (Originally O(log n) delete-min was only proven for the two-pass
     /// variant.)
     #[must_use]
-    pub fn merge_children_pass_h(mut items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
-        // let start = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
+    pub fn merge_children_pass_h_last_no_corruption(
+        mut items: Vec<Self>,
+        corrupted: &mut Vec<T>,
+    ) -> Option<Self> {
+        // let start0 = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
         let start = items
             .len()
             .next_multiple_of(CORRUPT_EVERY_N)
             .saturating_sub(CORRUPT_EVERY_N);
+        // assert!(start >= start0, "start: {start}, start0: {start0}, items.len(): {}", items.len());
         assert_eq!(0, start % CORRUPT_EVERY_N);
-        assert!(items.len() - start <= CORRUPT_EVERY_N);
-        assert!(items.len() >= start);
+        assert!(items.len() - start < CORRUPT_EVERY_N);
+        // assert!(items.len() >= 0);
         let last = Self::merge_many(items.drain(start..));
         let binding = items.into_iter().chunks(CORRUPT_EVERY_N);
         let chunked = binding
@@ -175,6 +182,123 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
             .filter_map(Self::merge_many)
             .map(|a| a.corrupt(corrupted));
         Self::merge_many(chain!(chunked, once(last).flatten()))
+    }
+
+    pub fn merge_children_pass_h(mut items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        let end = items.len() % CORRUPT_EVERY_N;
+        let start = items.len() - end;
+        let start0 = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
+        // let start = items
+        //     .len()
+        //     .next_multiple_of(CORRUPT_EVERY_N)
+        //     .saturating_sub(CORRUPT_EVERY_N);
+        assert!(
+            start >= start0,
+            "start: {start}, start0: {start0}, items.len(): {}",
+            items.len()
+        );
+        assert_eq!(0, start % CORRUPT_EVERY_N);
+        assert!(items.len() - start < CORRUPT_EVERY_N);
+        // assert!(items.len() >= 0);
+        let last = Self::merge_many(items.drain(start..));
+        let binding = items.into_iter().chunks(CORRUPT_EVERY_N);
+        let chunked = binding
+            .into_iter()
+            .filter_map(Self::merge_many)
+            .map(|a| a.corrupt(corrupted));
+        Self::merge_many(chain!(chunked, once(last).flatten()))
+    }
+
+    pub fn merge_children_pass_h_queue(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        let mut queue: VecDeque<_> = VecDeque::from(items);
+        let mut free: usize = 1;
+        loop {
+            if queue.len() <= free * CORRUPT_EVERY_N {
+                return Self::merge_many(queue);
+            }
+            if let Some(Pairing {
+                key: Pool { item, count },
+                mut children,
+            }) = Self::merge_many(queue.drain(..CORRUPT_EVERY_N))
+            {
+                free += 1;
+                corrupted.push(item);
+                // children.sort();
+                children.shuffle(&mut rand::rng());
+                // ch
+                // children.reverse();
+                if let Some(first) = children.first_mut() {
+                    first.key.count += count + 1;
+                } else {
+                    unreachable!(
+                        "We should always have at least one child after merging a full chunk."
+                    );
+                }
+                children.shuffle(&mut rand::rng());
+                queue.extend(children);
+            } else {
+                unreachable!("We should have have a non-empty heap after merging a full chunk.");
+            }
+        }
+    }
+
+    pub fn merge_children_pass_h_queue_power_of_n(
+        items: Vec<Self>,
+        corrupted: &mut Vec<T>,
+    ) -> Option<Self> {
+        let mut queue: VecDeque<_> = VecDeque::from(items);
+        loop {
+            if queue.len() < CORRUPT_EVERY_N {
+                return Self::merge_many(queue);
+            }
+            if let Some(Pairing {
+                key: Pool { item, count },
+                mut children,
+            }) = Self::merge_many(queue.drain(..CORRUPT_EVERY_N))
+            {
+                const POWER: usize = 10;
+
+                corrupted.push(item);
+                // children.sort();
+                children.shuffle(&mut rand::rng());
+
+                let mix = children.split_off(children.len().saturating_sub(POWER));
+                if let Some(r) = Self::merge_many(mix) {
+                    children.push(r);
+                } else {
+                    unreachable!("We should have a non-empty heap after merging a chunk.");
+                }
+
+                if let Some(last) = children.last_mut() {
+                    last.key.count += count + 1;
+                } else {
+                    unreachable!(
+                        "We should always have at least one child after merging a full chunk."
+                    );
+                }
+                children.shuffle(&mut rand::rng());
+                queue.extend(children);
+            } else {
+                unreachable!("We should have have a non-empty heap after merging a full chunk.");
+            }
+        }
+    }
+
+    pub fn merge_children_pass_h_queue_simple(
+        items: Vec<Self>,
+        corrupted: &mut Vec<T>,
+    ) -> Option<Self> {
+        let mut queue: VecDeque<Pairing<CORRUPT_EVERY_N, T>> = VecDeque::from(items);
+        loop {
+            if queue.len() <= CORRUPT_EVERY_N {
+                return Self::merge_many(queue);
+            }
+            if let Some(p) = Self::merge_many(queue.drain(..CORRUPT_EVERY_N)) {
+                queue.push_back(p.corrupt(corrupted));
+            } else {
+                unreachable!("We should have have a non-empty heap after merging a full chunk.");
+            }
+        }
     }
 
     #[must_use]
@@ -213,6 +337,42 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
             .fold(None, |acc, item| {
                 chain!(acc.map(|acc| acc.corrupt(corrupted)), item).reduce(Self::meld)
             })
+    }
+
+    #[must_use]
+    pub fn merge_children_two_pass_grouped(
+        items: Vec<Self>,
+        corrupted: &mut Vec<T>,
+    ) -> Option<Self> {
+        let mut queue: VecDeque<_> = VecDeque::from(items);
+        loop {
+            if queue.len() < CORRUPT_EVERY_N {
+                return Self::merge_many(queue);
+            }
+            if let Some(p) = Self::merge_many(queue.drain(..CORRUPT_EVERY_N)) {
+                queue.push_front(p.corrupt(corrupted));
+            } else {
+                unreachable!("We should have have a non-empty heap after merging a full chunk.");
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn merge_children_two_pass_grouped_last(
+        items: Vec<Self>,
+        corrupted: &mut Vec<T>,
+    ) -> Option<Self> {
+        let mut queue: VecDeque<_> = VecDeque::from(items);
+        loop {
+            if queue.len() < CORRUPT_EVERY_N {
+                return Self::merge_many(queue);
+            }
+            if let Some(p) = Self::merge_many(queue.drain(..CORRUPT_EVERY_N)) {
+                queue.push_back(p.corrupt(corrupted));
+            } else {
+                unreachable!("We should have have a non-empty heap after merging a full chunk.");
+            }
+        }
     }
 
     #[must_use]
@@ -256,13 +416,21 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         // This one seems to work, but it has a higher corruption rate for our parameter.
         // Self::merge_children_evenly(items, corrupted)
 
-        // These two work:
+        // These ones work:
         // Self::merge_children_pass_h(items, corrupted)
-        Self::merge_children_two_pass(items, corrupted)
+        // Self::merge_children_pass_h_queue_simple(items, corrupted)
+        // Self::merge_children_two_pass(items, corrupted)
+        // Self::merge_children_two_pass_grouped(items, corrupted)
+        Self::merge_children_two_pass_grouped_last(items, corrupted)
+
+        // These ones should maybe work, but doesn't:
+        // Self::merge_children_pass_h_queue(items, corrupted)
+        // Self::merge_children_pass_h_queue_power_of_n(items, corrupted)
 
         // // These two do not work!
         // Self::merge_children_two_pass_degree(items, corrupted)
         // Self::merge_children_one_pass(items, corrupted)
+        // Self::merge_children_at_end(items, corrupted)
     }
 
     // Corrupt all at the end.
@@ -366,7 +534,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
                     Self {
                         root,
                         size: self.size - pool.count - 1,
-                        corrupted: self.corrupted + corrupted.len() - usize::from(pool.count),
+                        corrupted: self.corrupted + corrupted.len() - pool.count,
                     },
                     Some(pool.item),
                     corrupted,

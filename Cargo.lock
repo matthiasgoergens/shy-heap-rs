@@ -215,6 +215,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "random"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61c7093a82705b48f10d4b165c6482dbe9f58cd63a870d85537e857b2badbd88"
+
+[[package]]
 name = "regex-syntax"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -258,6 +264,7 @@ dependencies = [
  "itertools",
  "proptest",
  "rand",
+ "random",
  "seq-macro",
 ]
 
