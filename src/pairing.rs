@@ -78,7 +78,7 @@ impl<const CORRUPT_EVERY_N: usize, T> Pairing<CORRUPT_EVERY_N, T> {
 
 impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     #[must_use]
-    pub fn meld(self, other: Pairing<CORRUPT_EVERY_N, T>) -> Pairing<CORRUPT_EVERY_N, T> {
+    pub fn meld(self, other: Self) -> Self {
         let (mut a, b) = if self.key.item < other.key.item {
             (self, other)
         } else {
@@ -86,6 +86,15 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         };
         a.children.push(b);
         a
+    }
+
+    #[must_use]
+    pub fn meld_option(me: Option<Self>, other: Option<Self>) -> Option<Self> {
+        match (me, other) {
+            (me, None) => me,
+            (None, other) => other,
+            (Some(a), Some(b)) => Some(a.meld(b)),
+        }
     }
 
     #[must_use]
@@ -376,10 +385,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     }
 
     #[must_use]
-    pub fn merge_children_multi_grouped(
-        items: Vec<Self>,
-        corrupted: &mut Vec<T>,
-    ) -> Option<Self> {
+    pub fn merge_children_multi_grouped(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
         const GRACE_CHUNKS: usize = 2;
         let binding = items.into_iter().chunks(GRACE_CHUNKS);
         let mut queue: VecDeque<_> = binding.into_iter().filter_map(Self::merge_many).collect();
@@ -388,8 +394,8 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
                 return Self::merge_many(queue);
             }
             if let Some(p) = Self::merge_many(queue.drain(..CORRUPT_EVERY_N)) {
-                queue.push_back(p.corrupt(corrupted));
-                // queue.push_front(p.corrupt(corrupted));
+                // queue.push_back(p.corrupt(corrupted));
+                queue.push_front(p.corrupt(corrupted));
             } else {
                 unreachable!("We should have have a non-empty heap after merging a full chunk.");
             }
@@ -530,6 +536,17 @@ impl<const CORRUPT_EVERY_N: usize, T> Default for SoftHeap<CORRUPT_EVERY_N, T> {
     }
 }
 
+impl<const CORRUPT_EVERY_N: usize, T> SoftHeap<CORRUPT_EVERY_N, T> {
+    #[must_use]
+    pub fn singleton(item: T) -> Self {
+        Self {
+            root: Some(Pairing::new(item)),
+            size: 1,
+            corrupted: 0,
+        }
+    }
+}
+
 impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
     #[must_use]
     pub fn insert(self, item: T) -> Self {
@@ -544,6 +561,16 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
                 size: self.size + 1,
                 corrupted: self.corrupted,
             },
+        }
+    }
+
+    #[must_use]
+    pub fn meld(self, other: Self) -> Self {
+        let root = Pairing::meld_option(self.root, other.root);
+        Self {
+            root,
+            size: self.size + other.size,
+            corrupted: self.corrupted + other.corrupted,
         }
     }
 

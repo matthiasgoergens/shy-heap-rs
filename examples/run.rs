@@ -4,13 +4,13 @@
 use std::cmp::max;
 
 use itertools::enumerate;
-use rand::seq::SliceRandom;
+use rand::{seq::SliceRandom, Rng};
 use seq_macro::seq;
 use softheap::pairing::SoftHeap; // Add import for seq_macro
 
 pub fn one_batch() {
     // let n = 10_000_000;
-    const EVERY: usize = 4;
+    const EVERY: usize = 6;
     const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
     // const EXPECTED_CORRUPTED_FRACTION: f64 = RAW / (1.0-RAW);
     // Wrong formula.
@@ -68,6 +68,73 @@ pub fn one_batch() {
     //     pairing.count_uncorrupted(),
     //     pairing.count_corrupted()
     // );
+}
+
+pub fn one_batch_meld() {
+    // let n = 10_000_000;
+    const EVERY: usize = 6;
+    const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
+    // const EXPECTED_CORRUPTED_FRACTION: f64 = RAW / (1.0-RAW);
+    // Wrong formula.
+    const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - ELOG as f64);
+    println!("EVERY: {EVERY} one_batch random");
+    for e in 0..28 {
+        let n = 1 << e;
+
+        let mut x: Vec<SoftHeap<ELOG, i32>> = (0..n).map(SoftHeap::singleton).collect::<Vec<_>>();
+
+        while x.len() > 1 {
+            let a = sample_swap_pop(&mut x);
+            let b = sample_swap_pop(&mut x);
+            x.push(a.meld(b));
+        }
+        let mut pairing = x.pop().unwrap();
+
+        let mut all_corrupted = 0;
+        let mut max_corrupted = 0;
+
+        // let mut c = 0;
+        while !pairing.is_empty() {
+            // c += 1;
+            let (new_pairing, _item, newly_corrupted) = pairing.heavy_delete_min();
+            // let (new_pairing, _item, newly_corrupted) = pairing.delete_min();
+            all_corrupted += newly_corrupted.len();
+            pairing = new_pairing;
+            max_corrupted = max(max_corrupted, pairing.count_corrupted());
+            // if !newly_corrupted.is_empty() {
+            //     print!(
+            //         "{c}\tTotal corrupted: {all_corrupted}\tNewly corrupted: {}\t",
+            //         newly_corrupted.len()
+            //     );
+            //     let corrupted_fraction = all_corrupted as f64 / n as f64;
+            //     println!("Corrupted fraction: {:.2}%", corrupted_fraction * 100.0);
+            // }
+            // println!(
+            //     "Total corrupted: {all_corrupted}\tUncorrupted: {}\tCorrupted: {}",
+            //     pairing.count_uncorrupted(),
+            //     pairing.count_corrupted()
+            // );
+        }
+        let ever_corrupted_fraction = all_corrupted as f64 / n as f64;
+        print!(
+            "Corrupted fraction: {:.2}%\texponent: {e}\tn: {n:10}\t",
+            ever_corrupted_fraction * 100.0
+        );
+        println!(
+            "Max corrupted fraction: {:6.2}%\t?< {:6.2}%",
+            max_corrupted as f64 / n as f64 * 100.0,
+            EXPECTED_CORRUPTED_FRACTION * 100.0
+        );
+    }
+    // println!(
+    //     "Total corrupted: {all_corrupted}\tUncorrupted: {}\tCorrupted: {}",
+    //     pairing.count_uncorrupted(),
+    //     pairing.count_corrupted()
+    // );
+}
+
+fn sample_swap_pop<T>(x: &mut Vec<T>) -> T {
+    x.swap_remove(rand::rng().random_range(..x.len()))
 }
 
 pub fn interleave() {
@@ -233,8 +300,9 @@ pub fn sort_n() {
 }
 
 pub fn main() {
-    one_batch();
+    // one_batch();
     // interleave();
     // interleave_n();
     // sort_n();
+    one_batch_meld();
 }
