@@ -76,6 +76,8 @@ impl<const CORRUPT_EVERY_N: usize, T> Pairing<CORRUPT_EVERY_N, T> {
     }
 }
 
+const BOUND: usize = 3;
+
 impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     #[must_use]
     pub fn meld(self, other: Self) -> Self {
@@ -86,6 +88,55 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         };
         a.children.push(b);
         a
+    }
+
+    #[must_use]
+    pub fn bounded_meld(self, other: Self) -> Self {
+        let (mut a, b) = if self.key.item < other.key.item {
+            (self, other)
+        } else {
+            (other, self)
+        };
+        a.children.push(b);
+        Pairing {
+            key: a.key,
+            children: Self::merge_many_bound(a.children),
+        }
+    }
+
+    #[must_use]
+    pub fn merge_many_bound(mut items: Vec<Self>) -> Vec<Self> {
+        while items.len() > BOUND {
+            // If we have more than BOUND items, we need to merge them.
+            let chunked = items.into_iter().chunks(2);
+            items = chunked
+                .into_iter()
+                .filter_map(|chunk| chunk.reduce(Self::bounded_meld))
+                .collect();
+        }
+        items
+    }
+
+    // This copy and paste job could be avoided with an extra parameter.
+    #[must_use]
+    pub fn merge_many_bound1(mut items: Vec<Self>) -> Option<Self> {
+        while items.len() > 1 {
+            let chunked = items.into_iter().chunks(2);
+            items = chunked
+                .into_iter()
+                .filter_map(|chunk| chunk.reduce(Self::bounded_meld))
+                .collect();
+        }
+        items.into_iter().next()
+    }
+
+    #[must_use]
+    pub fn merge_children_bounded(
+        items: Vec<Self>,
+        _corrupted: &mut Vec<T>,
+    ) -> Option<Self> {
+        // TODO: introduce corruption later.
+        Self::merge_many_bound1(items)
     }
 
     #[must_use]
