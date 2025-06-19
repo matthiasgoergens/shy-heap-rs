@@ -1,7 +1,7 @@
 // Run as
 //  RUST_MIN_STACK=16777216 cargo run --release --example run
 
-const EVERY: usize = 3;
+const EVERY: usize = 20;
 const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
 
 use std::cmp::max;
@@ -9,7 +9,7 @@ use std::cmp::max;
 use itertools::enumerate;
 use rand::{seq::SliceRandom, Rng};
 use seq_macro::seq;
-use softheap::pairing::SoftHeap; // Add import for seq_macro
+use softheap::{pairing::SoftHeap, tools::with_counter}; // Add import for seq_macro
 
 pub fn one_batch() {
     // let n = 10_000_000;
@@ -28,6 +28,7 @@ pub fn one_batch() {
         let mut x = (0..n).collect::<Vec<_>>();
 
         x.shuffle(&mut rand::rng());
+        let (counter, x) = with_counter(x);
         for (_index, item) in enumerate(x) {
             pairing = pairing.insert(item);
             // pairing = pairing.insert(j);
@@ -62,10 +63,14 @@ pub fn one_batch() {
             "Corrupted fraction: {:.2}%\texponent: {e}\tn: {n:10}\t",
             ever_corrupted_fraction * 100.0
         );
+        let work = counter.get() as f64 / n as f64;
+        let max_corrupted_fraction = max_corrupted as f64 / n as f64;
         println!(
-            "Max corrupted fraction: {:6.5}%\t?< {:6.5}%",
+            "Max corrupted fraction: {:6.5}%\t?< {:6.5}%\t{:10.6}\t{:10.6}",
             max_corrupted as f64 / n as f64 * 100.0,
-            EXPECTED_CORRUPTED_FRACTION * 100.0
+            EXPECTED_CORRUPTED_FRACTION * 100.0,
+            work,
+            work * max_corrupted_fraction,
         );
     }
     // println!(
