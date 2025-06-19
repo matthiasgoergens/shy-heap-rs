@@ -106,7 +106,15 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
 
     #[must_use]
     pub fn merge_many_bound(mut items: Vec<Self>) -> Vec<Self> {
-        while items.len() > BOUND {
+        if items.len() <= BOUND {
+            return items;
+        }
+        assert_eq!(items.len(), BOUND+1);
+        // items.reverse();
+        // The two below are equivalent for BOUND==2 only;
+
+        while items.len() > 1 {
+            // items.reverse();
             // If we have more than BOUND items, we need to merge them.
             let chunked = items.into_iter().chunks(2);
             items = chunked
@@ -115,19 +123,24 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
                 .collect();
         }
         items
+        // items.into_iter().reduce(Self::bounded_meld).into_iter().collect()
     }
 
     // This copy and paste job could be avoided with an extra parameter.
     #[must_use]
     pub fn merge_many_bound1(mut items: Vec<Self>) -> Option<Self> {
-        while items.len() > 1 {
-            let chunked = items.into_iter().chunks(2);
-            items = chunked
-                .into_iter()
-                .filter_map(|chunk| chunk.reduce(Self::bounded_meld))
-                .collect();
-        }
-        items.into_iter().next()
+        items.reverse();
+        // The two below are equivalent for BOUND==2 only;
+
+        // while items.len() > 1 {
+        //     let chunked = items.into_iter().chunks(2);
+        //     items = chunked
+        //         .into_iter()
+        //         .filter_map(|chunk| chunk.reduce(Self::bounded_meld))
+        //         .collect();
+        // }
+        // items.into_iter().next()
+        items.into_iter().reduce(Self::bounded_meld)
     }
 
     #[must_use]
@@ -146,8 +159,17 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     }
 
     #[must_use]
+    pub fn bounded_meld_option(me: Option<Self>, other: Option<Self>) -> Option<Self> {
+        match (me, other) {
+            (me, None) => me,
+            (None, other) => other,
+            (Some(a), Some(b)) => Some(a.bounded_meld(b)),
+        }
+    }
+
+    #[must_use]
     pub fn insert(self, item: T) -> Self {
-        self.meld(Self::new(item))
+        self.bounded_meld(Self::new(item))
     }
 
     /// Corrupts the heap by pooling the top two elements.
@@ -649,6 +671,17 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
     #[must_use]
     pub fn meld(self, other: Self) -> Self {
         let root = Pairing::meld_option(self.root, other.root);
+        Self {
+            root,
+            size: self.size + other.size,
+            corrupted: self.corrupted + other.corrupted,
+        }
+    }
+
+
+    #[must_use]
+    pub fn bounded_meld(self, other: Self) -> Self {
+        let root = Pairing::bounded_meld_option(self.root, other.root);
         Self {
             root,
             size: self.size + other.size,

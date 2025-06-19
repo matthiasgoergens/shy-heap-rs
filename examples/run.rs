@@ -19,7 +19,7 @@ pub fn one_batch() {
     // Wrong formula.
     // const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - ELOG as f64);
     // const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (3.0 * EVERY as f64 - ELOG as f64 - 2.0);
-    const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64);
+    // const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64);
     println!("EVERY: {EVERY} one_batch random");
     for e in 0..28 {
         let n = 1 << e;
@@ -33,6 +33,11 @@ pub fn one_batch() {
             pairing = pairing.insert(item);
             // pairing = pairing.insert(j);
         }
+
+        let prep_count = counter.get();
+        let count_ration = prep_count as f64 / (n as f64-1.0);
+        print!("cmp: {prep_count:10}\tcmp_ratio: {count_ration:10.6}\t");
+
         let mut all_corrupted = 0;
         let mut max_corrupted = 0;
 
@@ -58,19 +63,27 @@ pub fn one_batch() {
             //     pairing.count_corrupted()
             // );
         }
-        let ever_corrupted_fraction = all_corrupted as f64 / n as f64;
-        print!(
-            "Corrupted fraction: {:.2}%\texponent: {e}\tn: {n:10}\t",
-            ever_corrupted_fraction * 100.0
-        );
-        let work = counter.get() as f64 / n as f64;
-        let max_corrupted_fraction = max_corrupted as f64 / n as f64;
+        // let ever_corrupted_fraction = all_corrupted as f64 / n as f64;
+        // print!(
+        //     "Corrupted fraction: {:.2}%\texponent: {e}\tn: {n:10}\t",
+        //     ever_corrupted_fraction * 100.0
+        // );
+        // let work = counter.get() as f64 / n as f64;
+        // let max_corrupted_fraction = max_corrupted as f64 / n as f64;
+        let remaining_work = counter.get() - prep_count;
+        // println!(
+        //     "Max corrupted fraction: {:6.5}%\t?< {:6.5}%\t{:10.6}\t{:10.6}\tlog-factor: {:10.6}",
+        //     max_corrupted as f64 / n as f64 * 100.0,
+        //     EXPECTED_CORRUPTED_FRACTION * 100.0,
+        //     remaining_work,
+        //     remaining_work as f64 / n as f64,
+        //     remaining_work as f64 / n as f64 / ((n as f64).log2()),
+        // );
         println!(
-            "Max corrupted fraction: {:6.5}%\t?< {:6.5}%\t{:10.6}\t{:10.6}",
-            max_corrupted as f64 / n as f64 * 100.0,
-            EXPECTED_CORRUPTED_FRACTION * 100.0,
-            work,
-            work * max_corrupted_fraction,
+            "\trem: {:10}\trem_ratio: {:11.6}\tlog-factor: {:10.6}",
+            remaining_work,
+            remaining_work as f64 / n as f64,
+            remaining_work as f64 / n as f64 / ((n as f64).log2()),
         );
     }
     // println!(
@@ -89,14 +102,22 @@ pub fn one_batch_meld() {
     for e in 0..28 {
         let n = 1 << e;
 
-        let mut x: Vec<SoftHeap<EVERY, i32>> = (0..n).map(SoftHeap::singleton).collect::<Vec<_>>();
+        let (counter, x) = with_counter((0..n).collect::<Vec<_>>());
+        let mut x: Vec<SoftHeap<EVERY, _>> =
+            x.into_iter().map(SoftHeap::singleton).collect::<Vec<_>>();
 
         while x.len() > 1 {
             let a = sample_swap_pop(&mut x);
             let b = sample_swap_pop(&mut x);
-            x.push(a.meld(b));
+            x.push(a.bounded_meld(b));
         }
         let mut pairing = x.pop().unwrap();
+        let prep_count = counter.get();
+        assert!(x.is_empty());
+
+        let count = counter.get();
+        let count_ration = count as f64 / n as f64;
+        print!("cmp: {count:10}\tcmp_ratio: {count_ration:10.6}\t");
 
         let mut all_corrupted = 0;
         let mut max_corrupted = 0;
@@ -124,14 +145,21 @@ pub fn one_batch_meld() {
             // );
         }
         let ever_corrupted_fraction = all_corrupted as f64 / n as f64;
-        print!(
-            "Corrupted fraction: {:.2}%\texponent: {e}\tn: {n:10}\t",
-            ever_corrupted_fraction * 100.0
-        );
+        // print!(
+        //     "Corrupted fraction: {:.2}%\texponent: {e}\tn: {n:10}\t",
+        //     ever_corrupted_fraction * 100.0
+        // );
+        // println!(
+        //     "Max corrupted fraction: {:6.5}%\t?< {:6.5}%",
+        //     max_corrupted as f64 / n as f64 * 100.0,
+        //     EXPECTED_CORRUPTED_FRACTION * 100.0
+        // );
+        let remaining_work = counter.get() - prep_count;
         println!(
-            "Max corrupted fraction: {:6.5}%\t?< {:6.5}%",
-            max_corrupted as f64 / n as f64 * 100.0,
-            EXPECTED_CORRUPTED_FRACTION * 100.0
+            "\trem: {:10}\trem_ratio: {:11.6}\tlog-factor: {:10.6}",
+            remaining_work,
+            remaining_work as f64 / n as f64,
+            remaining_work as f64 / n as f64 / ((n as f64).log2()),
         );
     }
     // println!(
