@@ -131,10 +131,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     }
 
     #[must_use]
-    pub fn merge_children_bounded(
-        items: Vec<Self>,
-        _corrupted: &mut Vec<T>,
-    ) -> Option<Self> {
+    pub fn merge_children_bounded(items: Vec<Self>, _corrupted: &mut Vec<T>) -> Option<Self> {
         // TODO: introduce corruption later.
         Self::merge_many_bound1(items)
     }
@@ -521,6 +518,9 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     }
 
     pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        // This one doesn't actually do any corruption
+        Self::merge_children_bounded(items, corrupted)
+
         // This one seems to work, but it has a higher corruption rate for our parameter.
         // Self::merge_children_evenly(items, corrupted)
 
@@ -531,7 +531,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         // Self::merge_children_two_pass_grouped(items, corrupted)
         // Self::merge_children_two_pass_grouped_last(items, corrupted)
 
-        Self::merge_children_multi_grouped(items, corrupted)
+        // Self::merge_children_multi_grouped(items, corrupted)
         // Self::merge_children_multi_grouped_less_grace(items, corrupted)
 
         // These ones should maybe work, but doesn't:
