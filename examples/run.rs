@@ -35,7 +35,7 @@ pub fn one_batch() {
         }
 
         let prep_count = counter.get();
-        let count_ration = prep_count as f64 / (n as f64-1.0);
+        let count_ration = prep_count as f64 / (n as f64 - 1.0);
         print!("cmp: {prep_count:10}\tcmp_ratio: {count_ration:10.6}\t");
 
         let mut all_corrupted = 0;
@@ -109,7 +109,7 @@ pub fn one_batch_meld() {
         while x.len() > 1 {
             let a = sample_swap_pop(&mut x);
             let b = sample_swap_pop(&mut x);
-            x.push(a.bounded_meld(b));
+            x.push(a.meld(b));
         }
         let mut pairing = x.pop().unwrap();
         let prep_count = counter.get();

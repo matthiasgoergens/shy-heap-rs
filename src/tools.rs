@@ -3,7 +3,6 @@ pub fn previous_full_multiple(n: usize, m: usize) -> usize {
     (n + 1).next_multiple_of(m) - m
 }
 
-
 use std::cell::Cell;
 use std::cmp::Ordering;
 use std::rc::Rc;
@@ -55,10 +54,7 @@ impl<T: Ord> Eq for Counted<T> {}
 /// `(shared_counter, wrapped_vector)`.
 pub fn with_counter<T: Ord>(v: Vec<T>) -> (Rc<Cell<usize>>, Vec<Counted<T>>) {
     let counter = Rc::new(Cell::new(0));
-    let wrapped = v
-        .into_iter()
-        .map(|x| Counted::new(x, &counter))
-        .collect();
+    let wrapped = v.into_iter().map(|x| Counted::new(x, &counter)).collect();
     (counter, wrapped)
 }
 

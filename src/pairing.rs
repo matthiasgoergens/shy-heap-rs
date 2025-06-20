@@ -3,7 +3,7 @@
 
 use std::{collections::VecDeque, iter::once};
 
-use itertools::{chain, Itertools};
+use itertools::{chain, enumerate, Itertools};
 use rand::seq::SliceRandom;
 
 use crate::tools::previous_full_multiple;
@@ -109,7 +109,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         if items.len() <= BOUND {
             return items;
         }
-        assert_eq!(items.len(), BOUND+1);
+        assert_eq!(items.len(), BOUND + 1);
 
         // let c = items.pop();
         // let b = items.pop();
@@ -117,7 +117,6 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         // chain!(a, Self::bounded_meld_option(b, c)).collect::<Vec<_>>()
 
         //
-
 
         // OK, the swap doesn't work.  Because it just builds two big lists,
         // it doesn't do pairing to limit the depth.
@@ -147,11 +146,14 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
 
         // OK, the above works better, I think?
 
-
         // // The two below are equivalent for BOUND==2 only;
         // // a b c -> a | (b | c)
         items.reverse();
-        items.into_iter().reduce(Self::bounded_meld).into_iter().collect()
+        items
+            .into_iter()
+            .reduce(Self::bounded_meld)
+            .into_iter()
+            .collect()
 
         // // while items.len() > 1 {
         // //     // items.reverse();
@@ -167,11 +169,10 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
 
     // This copy and paste job could be avoided with an extra parameter.
     #[must_use]
-    pub fn merge_many_bound1(mut items: Vec<Self>) -> Option<Self> {
+    pub fn merge_many_bound1(items: Vec<Self>) -> Option<Self> {
         // This only works for BOUND==2.  (At least my analysis does.)
         let items = Self::merge_many_bound(items);
         items.into_iter().reduce(Self::bounded_meld)
-
 
         // items.reverse();
         // The two below are equivalent for BOUND==2 only;
@@ -187,11 +188,11 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         // items.into_iter().reduce(Self::bounded_meld)
     }
 
-    #[must_use]
-    pub fn merge_children_bounded(items: Vec<Self>, _corrupted: &mut Vec<T>) -> Option<Self> {
-        // TODO: introduce corruption later.
-        Self::merge_many_bound1(items)
-    }
+    // #[must_use]
+    // pub fn merge_children_bounded(items: Vec<Self>, _corrupted: &mut Vec<T>) -> Option<Self> {
+    //     // TODO: introduce corruption later.
+    //     Self::merge_many_bound1(items)
+    // }
 
     #[must_use]
     pub fn meld_option(me: Option<Self>, other: Option<Self>) -> Option<Self> {
@@ -202,19 +203,24 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         }
     }
 
-    #[must_use]
-    pub fn bounded_meld_option(me: Option<Self>, other: Option<Self>) -> Option<Self> {
-        match (me, other) {
-            (me, None) => me,
-            (None, other) => other,
-            (Some(a), Some(b)) => Some(a.bounded_meld(b)),
-        }
-    }
+    // #[must_use]
+    // pub fn bounded_meld_option(me: Option<Self>, other: Option<Self>) -> Option<Self> {
+    //     match (me, other) {
+    //         (me, None) => me,
+    //         (None, other) => other,
+    //         (Some(a), Some(b)) => Some(a.bounded_meld(b)),
+    //     }
+    // }
 
     #[must_use]
     pub fn insert(self, item: T) -> Self {
-        self.bounded_meld(Self::new(item))
+        self.meld(Self::new(item))
     }
+
+    // #[must_use]
+    // pub fn bounded_insert(self, item: T) -> Self {
+    //     self.bounded_meld(Self::new(item))
+    // }
 
     /// Corrupts the heap by pooling the top two elements.
     ///
@@ -271,6 +277,50 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
                 (a, _) => return a,
             }
         }
+    }
+
+    pub fn merge_children_multi_pass_binary(
+        items: Vec<Self>,
+        corrupted: &mut Vec<T>,
+    ) -> Option<Self> {
+        let mut digits: Vec<Option<Self>> = vec![];
+
+        // Add items one by one by simulating incrementing a binary number.
+        // We do this work in the merge_children of delete-min,
+        // but it's actually paid for by the inserts' O(1) charge already.
+        // So we don't need to corrupt here.
+        for item in items {
+            let mut carry = item;
+            // Make sure that we always have one trailing zero, ie trailing None,
+            // so that standard carry logic works.
+            if let Some(None) = digits.last() {
+            } else {
+                digits.push(None);
+            }
+            for digit in &mut digits {
+                match digit.take() {
+                    None => {
+                        *digit = Some(carry);
+                        break;
+                    }
+                    Some(digit_item) => {
+                        carry = carry.meld(digit_item);
+                    }
+                }
+            }
+        }
+        // Roll up our counter.
+        let mut digits = digits.into_iter().flatten();
+        let mut carry = digits.next()?;
+        let digits = enumerate(digits);
+        for (i, digit) in digits {
+            carry = carry.meld(digit);
+            if (i.saturating_sub(BOUND) + 1) % CORRUPT_EVERY_N == 0 {
+                // After BOUND, corrupt every CORRUPT_EVERY_Nth item.
+                carry = carry.corrupt(corrupted);
+            }
+        }
+        Some(carry)
     }
 
     /// Merges the list of children of a (former) node into one node.
@@ -585,7 +635,8 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
 
     pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
         // This one doesn't actually do any corruption
-        Self::merge_children_bounded(items, corrupted)
+        // Self::merge_children_bounded(items, corrupted)
+        Self::merge_children_multi_pass_binary(items, corrupted)
 
         // This one seems to work, but it has a higher corruption rate for our parameter.
         // Self::merge_children_evenly(items, corrupted)
@@ -722,16 +773,15 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
         }
     }
 
-
-    #[must_use]
-    pub fn bounded_meld(self, other: Self) -> Self {
-        let root = Pairing::bounded_meld_option(self.root, other.root);
-        Self {
-            root,
-            size: self.size + other.size,
-            corrupted: self.corrupted + other.corrupted,
-        }
-    }
+    // #[must_use]
+    // pub fn bounded_meld(self, other: Self) -> Self {
+    //     let root = Pairing::bounded_meld_option(self.root, other.root);
+    //     Self {
+    //         root,
+    //         size: self.size + other.size,
+    //         corrupted: self.corrupted + other.corrupted,
+    //     }
+    // }
 
     #[must_use]
     pub fn heavy_delete_min(self) -> (Self, Option<T>, Vec<T>) {
