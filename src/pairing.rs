@@ -76,7 +76,7 @@ impl<const CORRUPT_EVERY_N: usize, T> Pairing<CORRUPT_EVERY_N, T> {
     }
 }
 
-const BOUND: usize = 3;
+const BOUND: usize = 2;
 
 impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     #[must_use]
@@ -110,26 +110,70 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
             return items;
         }
         assert_eq!(items.len(), BOUND+1);
-        // items.reverse();
-        // The two below are equivalent for BOUND==2 only;
 
-        while items.len() > 1 {
-            // items.reverse();
-            // If we have more than BOUND items, we need to merge them.
-            let chunked = items.into_iter().chunks(2);
-            items = chunked
-                .into_iter()
-                .filter_map(|chunk| chunk.reduce(Self::bounded_meld))
-                .collect();
-        }
-        items
-        // items.into_iter().reduce(Self::bounded_meld).into_iter().collect()
+        // let c = items.pop();
+        // let b = items.pop();
+        // let a = items.pop();
+        // chain!(a, Self::bounded_meld_option(b, c)).collect::<Vec<_>>()
+
+        //
+
+
+        // OK, the swap doesn't work.  Because it just builds two big lists,
+        // it doesn't do pairing to limit the depth.
+
+        // let c = items.pop();
+        // let b = items.pop();
+        // let a = items.pop();
+
+        // chain!(Self::bounded_meld_option(b, c), a).collect::<Vec<_>>()
+
+        // a b c
+        // => c (a | b)
+        // c (a | b) d
+        // => d (c | (a | b))
+        // d (c | (a | b)) e
+        // => e (d | (c | (b | a)))
+
+        // vs
+        // a b c
+        // => (b | c) a
+        // (b | c) a d
+        // => (a | d) (b | c)
+        // (a | d) (b | c) e
+        // => (b | c | e) (a | d)
+        // (b | c | e) (a | d) f
+        // => (a | d | f) (b | c | e)
+
+        // OK, the above works better, I think?
+
+
+        // // The two below are equivalent for BOUND==2 only;
+        // // a b c -> a | (b | c)
+        items.reverse();
+        items.into_iter().reduce(Self::bounded_meld).into_iter().collect()
+
+        // // while items.len() > 1 {
+        // //     // items.reverse();
+        // //     // If we have more than BOUND items, we need to merge them.
+        // //     let chunked = items.into_iter().chunks(2);
+        // //     items = chunked
+        // //         .into_iter()
+        // //         .filter_map(|chunk| chunk.reduce(Self::bounded_meld))
+        // //         .collect();
+        // // }
+        // // items
     }
 
     // This copy and paste job could be avoided with an extra parameter.
     #[must_use]
     pub fn merge_many_bound1(mut items: Vec<Self>) -> Option<Self> {
-        items.reverse();
+        // This only works for BOUND==2.  (At least my analysis does.)
+        let items = Self::merge_many_bound(items);
+        items.into_iter().reduce(Self::bounded_meld)
+
+
+        // items.reverse();
         // The two below are equivalent for BOUND==2 only;
 
         // while items.len() > 1 {
@@ -140,7 +184,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         //         .collect();
         // }
         // items.into_iter().next()
-        items.into_iter().reduce(Self::bounded_meld)
+        // items.into_iter().reduce(Self::bounded_meld)
     }
 
     #[must_use]

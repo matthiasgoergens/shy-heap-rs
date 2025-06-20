@@ -27,7 +27,7 @@ pub fn one_batch() {
         let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
         let mut x = (0..n).collect::<Vec<_>>();
 
-        x.shuffle(&mut rand::rng());
+        // x.shuffle(&mut rand::rng());
         let (counter, x) = with_counter(x);
         for (_index, item) in enumerate(x) {
             pairing = pairing.insert(item);
