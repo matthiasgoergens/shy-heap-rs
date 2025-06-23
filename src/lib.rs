@@ -6,3 +6,4 @@
 pub mod pairing;
 pub mod schubert;
 pub mod tools;
+pub mod witness_set;

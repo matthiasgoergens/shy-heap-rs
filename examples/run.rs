@@ -3,7 +3,7 @@
 
 // const EVERY: usize = 2;
 const EVERY: usize = 8;
-const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
+// const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
 
 use std::cmp::max;
 
@@ -69,7 +69,7 @@ pub fn one_batch() {
             "crp: {all_corrupted:10}\tEver crp ratio: {:8.5}%\texpo: {e:3}\tn: {n:10}\t",
             ever_corrupted_fraction * 100.0
         );
-        let work = counter.get() as f64 / n as f64;
+        // let work = counter.get() as f64 / n as f64;
         let max_corrupted_fraction = max_corrupted as f64 / n as f64;
         let remaining_work = counter.get() - prep_count;
         println!(
@@ -91,7 +91,7 @@ pub fn one_batch_meld() {
     // let n = 10_000_000;
     // const EXPECTED_CORRUPTED_FRACTION: f64 = RAW / (1.0-RAW);
     // Wrong formula.
-    const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - ELOG as f64);
+    // const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64 - ELOG as f64);
     println!("EVERY: {EVERY} one_batch random meld");
     for e in 0..28 {
         let n = 1 << e;
@@ -113,15 +113,15 @@ pub fn one_batch_meld() {
         let count_ration = count as f64 / n as f64;
         print!("cmp: {count:10}\tcmp_ratio: {count_ration:10.6}\t");
 
-        let mut all_corrupted = 0;
+        // let mut all_corrupted = 0;
         let mut max_corrupted = 0;
 
         // let mut c = 0;
         while !pairing.is_empty() {
             // c += 1;
-            let (new_pairing, _item, newly_corrupted) = pairing.heavy_delete_min();
+            let (new_pairing, _item, _newly_corrupted) = pairing.heavy_delete_min();
             // let (new_pairing, _item, newly_corrupted) = pairing.delete_min();
-            all_corrupted += newly_corrupted.len();
+            // all_corrupted += newly_corrupted.len();
             pairing = new_pairing;
             max_corrupted = max(max_corrupted, pairing.count_corrupted());
             // if !newly_corrupted.is_empty() {
@@ -138,7 +138,7 @@ pub fn one_batch_meld() {
             //     pairing.count_corrupted()
             // );
         }
-        let ever_corrupted_fraction = all_corrupted as f64 / n as f64;
+        // let ever_corrupted_fraction = all_corrupted as f64 / n as f64;
         // print!(
         //     "Corrupted fraction: {:.2}%\texponent: {e}\tn: {n:10}\t",
         //     ever_corrupted_fraction * 100.0

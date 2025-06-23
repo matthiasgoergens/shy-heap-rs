@@ -3,12 +3,9 @@
 
 use std::{collections::VecDeque, iter::once};
 
-use itertools::{chain, enumerate, Itertools};
-use rand::seq::SliceRandom;
+use itertools::{chain, Itertools};
 
-use crate::tools::previous_full_multiple;
-
-// use crate::tools::previous_full_multiple;
+use crate::{tools::previous_full_multiple, witness_set::WitnessedSet};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Pool<T> {
@@ -39,8 +36,152 @@ impl<T> Pool<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct UnboundWitnessed<const CORRUPT_EVERY_N: usize, T> {
+    pub pairing: Pairing<CORRUPT_EVERY_N, T>,
+    pub to_be_witnessed: WitnessedSet<T>,
+}
+
+impl<const CORRUPT_EVERY_N: usize, T> From<Pairing<CORRUPT_EVERY_N, T>>
+    for UnboundWitnessed<CORRUPT_EVERY_N, T>
+{
+    fn from(pairing: Pairing<CORRUPT_EVERY_N, T>) -> Self {
+        Self {
+            pairing,
+            to_be_witnessed: WitnessedSet::default(),
+        }
+    }
+}
+
+impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> {
+    #[must_use]
+    pub fn extract(me: Option<Self>) -> (Option<Pairing<CORRUPT_EVERY_N, T>>, Vec<T>) {
+        if let Some(UnboundWitnessed {
+            pairing,
+            to_be_witnessed: witnessed,
+        }) = me
+        {
+            (Some(pairing), Vec::from(witnessed))
+        } else {
+            (None, vec![])
+        }
+    }
+
+    #[must_use]
+    pub fn meld(self, other: Self) -> Self {
+        let (mut a, b) = if self.pairing.key.item < other.pairing.key.item {
+            (self, other)
+        } else {
+            (other, self)
+        };
+        a.to_be_witnessed.extend(b.to_be_witnessed);
+        a.pairing.children.push(b.pairing);
+        a
+    }
+
+    #[must_use]
+    pub fn pop_min(self) -> (Option<Self>, Option<T>) {
+        todo!();
+        // if let Some(_me) = Self::merge_children(self.pairing.children) {
+        //     todo!()
+        // } else {
+        //     todo!()
+        // }
+    }
+
+    #[must_use]
+    pub fn merge_many(
+        _items: impl IntoIterator<Item = UnboundWitnessed<CORRUPT_EVERY_N, T>>,
+    ) -> Option<UnboundWitnessed<CORRUPT_EVERY_N, T>> {
+        // let mut items = items.into_iter();
+        // let mut first = items.next()?;
+        // let mut to_be_witnessed = WitnessedSet::default();
+        todo!()
+    }
+
+    #[must_use]
+    pub fn merge_children_pass_h(
+        items: Vec<Pairing<CORRUPT_EVERY_N, T>>,
+    ) -> Option<UnboundWitnessed<CORRUPT_EVERY_N, T>> {
+        let mut items = items
+            .into_iter()
+            .map(UnboundWitnessed::from)
+            .collect::<Vec<_>>();
+
+        let end = items.len() % CORRUPT_EVERY_N;
+        let start = items.len() - end;
+        let start0 = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
+        // let start = items
+        //     .len()
+        //     .next_multiple_of(CORRUPT_EVERY_N)
+        //     .saturating_sub(CORRUPT_EVERY_N);
+        assert!(
+            start >= start0,
+            "start: {start}, start0: {start0}, items.len(): {}",
+            items.len()
+        );
+        assert_eq!(0, start % CORRUPT_EVERY_N);
+        assert!(items.len() - start < CORRUPT_EVERY_N);
+        // assert!(items.len() >= 0);
+        let last = Self::merge_many(items.drain(start..));
+        let binding = items.into_iter().chunks(CORRUPT_EVERY_N);
+        let chunked = binding
+            .into_iter()
+            .filter_map(Self::merge_many)
+            .map(UnboundWitnessed::corrupt);
+        Self::merge_many(chain!(chunked, once(last).flatten()))
+    }
+
+    #[must_use]
+    pub fn merge_children(children: Vec<Pairing<CORRUPT_EVERY_N, T>>) -> Option<Self> {
+        Self::merge_children_pass_h(children)
+    }
+
+    pub fn heavy_pop_min(self) -> (Option<Self>, Pool<T>, Vec<T>) {
+        todo!()
+    }
+    #[must_use]
+    pub fn corrupt(self) -> Self {
+        // TODO(Matthias): this is like a heavy pop-min, so we should unify?  Maybe..
+        let UnboundWitnessed {
+            pairing:
+                Pairing {
+                    key,
+                    children,
+                    witnessed,
+                },
+            mut to_be_witnessed,
+        } = self;
+        if let Some(UnboundWitnessed {
+            pairing,
+            to_be_witnessed: tbw_c,
+        }) = Self::merge_children(children)
+        {
+            // assert!(key.item <= pairing.key.item);
+            to_be_witnessed.extend(witnessed);
+            to_be_witnessed.extend(tbw_c);
+            Self {
+                to_be_witnessed,
+                pairing: Pairing {
+                    key: pairing.key.add_to_pool(key.count + 1),
+                    children: pairing.children,
+                    witnessed: pairing.witnessed,
+                },
+            }
+        } else {
+            // Well, we have no children, so we can't actually corrupt anything.
+            // This shouldn't happen.
+            Self {
+                pairing: Pairing::from(key),
+                to_be_witnessed,
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Pairing<const CORRUPT_EVERY_N: usize, T> {
     pub key: Pool<T>,
+    pub witnessed: WitnessedSet<T>,
     pub children: Vec<Pairing<CORRUPT_EVERY_N, T>>,
 }
 
@@ -49,6 +190,7 @@ impl<const CORRUPT_EVERY_N: usize, T> From<Pool<T>> for Pairing<CORRUPT_EVERY_N,
         Self {
             key,
             children: vec![],
+            witnessed: WitnessedSet::default(),
         }
     }
 }
@@ -77,7 +219,7 @@ impl<const CORRUPT_EVERY_N: usize, T> Pairing<CORRUPT_EVERY_N, T> {
 }
 
 // const BOUND: usize = 2;
-const BOUND: usize = 0;
+// const BOUND: usize = 0;
 // const BOUND: usize = usize::MAX/2;
 // const BOUND: usize = 0;
 
@@ -94,108 +236,9 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     }
 
     #[must_use]
-    pub fn bounded_meld(self, other: Self) -> Self {
-        let (mut a, b) = if self.key.item < other.key.item {
-            (self, other)
-        } else {
-            (other, self)
-        };
-        a.children.push(b);
-        Pairing {
-            key: a.key,
-            children: Self::merge_many_bound(a.children),
-        }
+    pub fn insert(self, item: T) -> Self {
+        self.meld(Self::new(item))
     }
-
-    #[must_use]
-    pub fn merge_many_bound(mut items: Vec<Self>) -> Vec<Self> {
-        if items.len() <= BOUND {
-            return items;
-        }
-        assert_eq!(items.len(), BOUND + 1);
-
-        // let c = items.pop();
-        // let b = items.pop();
-        // let a = items.pop();
-        // chain!(a, Self::bounded_meld_option(b, c)).collect::<Vec<_>>()
-
-        //
-
-        // OK, the swap doesn't work.  Because it just builds two big lists,
-        // it doesn't do pairing to limit the depth.
-
-        // let c = items.pop();
-        // let b = items.pop();
-        // let a = items.pop();
-
-        // chain!(Self::bounded_meld_option(b, c), a).collect::<Vec<_>>()
-
-        // a b c
-        // => c (a | b)
-        // c (a | b) d
-        // => d (c | (a | b))
-        // d (c | (a | b)) e
-        // => e (d | (c | (b | a)))
-
-        // vs
-        // a b c
-        // => (b | c) a
-        // (b | c) a d
-        // => (a | d) (b | c)
-        // (a | d) (b | c) e
-        // => (b | c | e) (a | d)
-        // (b | c | e) (a | d) f
-        // => (a | d | f) (b | c | e)
-
-        // OK, the above works better, I think?
-
-        // // The two below are equivalent for BOUND==2 only;
-        // // a b c -> a | (b | c)
-        items.reverse();
-        items
-            .into_iter()
-            .reduce(Self::bounded_meld)
-            .into_iter()
-            .collect()
-
-        // // while items.len() > 1 {
-        // //     // items.reverse();
-        // //     // If we have more than BOUND items, we need to merge them.
-        // //     let chunked = items.into_iter().chunks(2);
-        // //     items = chunked
-        // //         .into_iter()
-        // //         .filter_map(|chunk| chunk.reduce(Self::bounded_meld))
-        // //         .collect();
-        // // }
-        // // items
-    }
-
-    // This copy and paste job could be avoided with an extra parameter.
-    #[must_use]
-    pub fn merge_many_bound1(items: Vec<Self>) -> Option<Self> {
-        // This only works for BOUND==2.  (At least my analysis does.)
-        let items = Self::merge_many_bound(items);
-        items.into_iter().reduce(Self::bounded_meld)
-
-        // items.reverse();
-        // The two below are equivalent for BOUND==2 only;
-
-        // while items.len() > 1 {
-        //     let chunked = items.into_iter().chunks(2);
-        //     items = chunked
-        //         .into_iter()
-        //         .filter_map(|chunk| chunk.reduce(Self::bounded_meld))
-        //         .collect();
-        // }
-        // items.into_iter().next()
-        // items.into_iter().reduce(Self::bounded_meld)
-    }
-
-    // #[must_use]
-    // pub fn merge_children_bounded(items: Vec<Self>, _corrupted: &mut Vec<T>) -> Option<Self> {
-    //     // TODO: introduce corruption later.
-    //     Self::merge_many_bound1(items)
-    // }
 
     #[must_use]
     pub fn meld_option(me: Option<Self>, other: Option<Self>) -> Option<Self> {
@@ -206,24 +249,19 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         }
     }
 
-    // #[must_use]
-    // pub fn bounded_meld_option(me: Option<Self>, other: Option<Self>) -> Option<Self> {
-    //     match (me, other) {
-    //         (me, None) => me,
-    //         (None, other) => other,
-    //         (Some(a), Some(b)) => Some(a.bounded_meld(b)),
-    //     }
-    // }
-
+    /*
     #[must_use]
-    pub fn insert(self, item: T) -> Self {
-        self.meld(Self::new(item))
+    pub fn meld_witnessed(me: (Self, WitnessedSet<T>), other: (Self, WitnessedSet<T>)) -> (Self, WitnessedSet<T>) {
+        let ((mut a, a_w), (b, b_w)) = if me.0.key.item < other.0.key.item {
+            (me, other)
+        } else {
+            (other, me)
+        };
+        a.witnessed.extend(b_w);
+        a.children.push(b);
+        (a, a_w)
     }
 
-    // #[must_use]
-    // pub fn bounded_insert(self, item: T) -> Self {
-    //     self.bounded_meld(Self::new(item))
-    // }
 
     /// Corrupts the heap by pooling the top two elements.
     ///
@@ -232,9 +270,9 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     /// Panics if the heap property is violated (when the key's item is greater than
     /// the merged pairing's key item).
     #[must_use]
-    pub fn corrupt(self, corrupted: &mut Vec<T>) -> Self {
-        let Pairing { key, children } = self;
-        match Self::merge_children(children, corrupted) {
+    pub fn corrupt(self) -> UnboundWitnessed<CORRUPT_EVERY_N, T> {
+        let Pairing { key, children , witnessed} = self;
+        match Self::merge_children(children) {
             None => Pairing::from(key),
             Some(pairing) => {
                 assert!(key.item <= pairing.key.item);
@@ -269,9 +307,20 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     }
 
     #[must_use]
-    pub fn merge_many<I>(items: I) -> Option<Self>
+    pub fn merge_many<I>(items: I) -> Option<UnboundWitnessed<CORRUPT_EVERY_N, T>>
     where
-        I: IntoIterator<Item = Self>,
+        I: IntoIterator<Item = UnboundWitnessed<CORRUPT_EVERY_N, T>>,
+    {
+        let mut d: VecDeque<_> = items.into_iter().collect();
+        loop {
+            match (d.pop_front(), d.pop_front()) {
+                (Some(a), Some(b)) => d.push_back(a.meld(b)),
+                (a, _) => return a.map(|pairing| UnboundWitnessed::new(pairing)),
+            }
+        }
+    }
+    where
+        I: IntoIterator<Item = (Self, WitnessedSet<T>)>,
     {
         let mut d: VecDeque<_> = items.into_iter().collect();
         loop {
@@ -357,41 +406,41 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         Some(carry)
     }
 
-    /// Merges the list of children of a (former) node into one node.
-    ///
-    /// See 'A Nearly-Tight Analysis of Multipass Pairing Heaps"
-    /// by Corwin Sinnamon and Robert E. Tarjan.
-    /// <https://epubs.siam.org/doi/epdf/10.1137/1.9781611977554.ch23>
-    ///
-    /// The paper explains why multipass (like here) does give O(log n)
-    /// delete-min.
-    ///
-    /// (Originally O(log n) delete-min was only proven for the two-pass
-    /// variant.)
-    #[must_use]
-    pub fn merge_children_pass_h_last_no_corruption(
-        mut items: Vec<Self>,
-        corrupted: &mut Vec<T>,
-    ) -> Option<Self> {
-        // let start0 = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
-        let start = items
-            .len()
-            .next_multiple_of(CORRUPT_EVERY_N)
-            .saturating_sub(CORRUPT_EVERY_N);
-        // assert!(start >= start0, "start: {start}, start0: {start0}, items.len(): {}", items.len());
-        assert_eq!(0, start % CORRUPT_EVERY_N);
-        assert!(items.len() - start < CORRUPT_EVERY_N);
-        // assert!(items.len() >= 0);
-        let last = Self::merge_many(items.drain(start..));
-        let binding = items.into_iter().chunks(CORRUPT_EVERY_N);
-        let chunked = binding
-            .into_iter()
-            .filter_map(Self::merge_many)
-            .map(|a| a.corrupt(corrupted));
-        Self::merge_many(chain!(chunked, once(last).flatten()))
-    }
+    // /// Merges the list of children of a (former) node into one node.
+    // ///
+    // /// See 'A Nearly-Tight Analysis of Multipass Pairing Heaps"
+    // /// by Corwin Sinnamon and Robert E. Tarjan.
+    // /// <https://epubs.siam.org/doi/epdf/10.1137/1.9781611977554.ch23>
+    // ///
+    // /// The paper explains why multipass (like here) does give O(log n)
+    // /// delete-min.
+    // ///
+    // /// (Originally O(log n) delete-min was only proven for the two-pass
+    // /// variant.)
+    // #[must_use]
+    // pub fn merge_children_pass_h_last_no_corruption(
+    //     mut items: Vec<Self>,
+    //     corrupted: &mut Vec<T>,
+    // ) -> Option<Self> {
+    //     // let start0 = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
+    //     let start = items
+    //         .len()
+    //         .next_multiple_of(CORRUPT_EVERY_N)
+    //         .saturating_sub(CORRUPT_EVERY_N);
+    //     // assert!(start >= start0, "start: {start}, start0: {start0}, items.len(): {}", items.len());
+    //     assert_eq!(0, start % CORRUPT_EVERY_N);
+    //     assert!(items.len() - start < CORRUPT_EVERY_N);
+    //     // assert!(items.len() >= 0);
+    //     let last = Self::merge_many(items.drain(start..));
+    //     let binding = items.into_iter().chunks(CORRUPT_EVERY_N);
+    //     let chunked = binding
+    //         .into_iter()
+    //         .filter_map(Self::merge_many)
+    //         .map(|a| a.corrupt(corrupted));
+    //     Self::merge_many(chain!(chunked, once(last).flatten()))
+    // }
 
-    pub fn merge_children_pass_h(mut items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+    pub fn merge_children_pass_h(mut items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<UnboundWitnessed<CORRUPT_EVERY_N, T>> {
         let end = items.len() % CORRUPT_EVERY_N;
         let start = items.len() - end;
         let start0 = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
@@ -667,7 +716,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
             })
     }
 
-    pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+    pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<UnboundWitnessed<CORRUPT_EVERY_N, T>> {
         // These two work, really well:
         // Self::merge_children_multi_pass_binary(items, corrupted)
         // Self::merge_children_multi_pass_binary_implicit(items, corrupted)
@@ -679,7 +728,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         // Self::merge_children_evenly(items, corrupted)
 
         // These ones work:
-        Self::merge_children_pass_h(items, corrupted)
+        Self::merge_children_pass_h(items,)
         // Self::merge_children_pass_h_queue_simple(items, corrupted)
         // Self::merge_children_two_pass(items, corrupted)
         // Self::merge_children_two_pass_grouped(items, corrupted)
@@ -731,6 +780,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         children.iter().all(|child| key.item <= child.key.item)
             && children.iter().all(Self::check_heap_property)
     }
+    */
 }
 
 // Get all non-corrupted elements still in the heap.
@@ -743,6 +793,7 @@ impl<const CORRUPT_EVERY_N: usize, T> From<Pairing<CORRUPT_EVERY_N, T>> for Vec<
             let Pairing {
                 key: Pool { item, count: _ },
                 children,
+                witnessed: _,
             } = pairing;
             todo.extend(children);
             items.push(item);
@@ -810,33 +861,24 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
         }
     }
 
-    // #[must_use]
-    // pub fn bounded_meld(self, other: Self) -> Self {
-    //     let root = Pairing::bounded_meld_option(self.root, other.root);
-    //     Self {
-    //         root,
-    //         size: self.size + other.size,
-    //         corrupted: self.corrupted + other.corrupted,
-    //     }
-    // }
-
     #[must_use]
     pub fn heavy_delete_min(self) -> (Self, Option<T>, Vec<T>) {
-        match self.root {
-            None => (Self::default(), None, vec![]),
-            Some(root) => {
-                let (root, pool, corrupted) = root.heavy_delete_min();
-                (
-                    Self {
-                        root,
-                        size: self.size - pool.count - 1,
-                        corrupted: self.corrupted + corrupted.len() - pool.count,
-                    },
-                    Some(pool.item),
-                    corrupted,
-                )
-            }
-        }
+        todo!()
+        // match self.root {
+        //     None => (Self::default(), None, vec![]),
+        //     Some(root) => {
+        //         let (root, pool, corrupted) = root.heavy_delete_min();
+        //         (
+        //             Self {
+        //                 root,
+        //                 size: self.size - pool.count - 1,
+        //                 corrupted: self.corrupted + corrupted.len() - pool.count,
+        //             },
+        //             Some(pool.item),
+        //             corrupted,
+        //         )
+        //     }
+        // }
     }
 
     #[must_use]
@@ -845,7 +887,12 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
         match self.root {
             None => (Self::default(), None, vec![]),
             Some(root) => {
-                let (root, item, corrupted) = root.delete_min();
+                let (root, item) = UnboundWitnessed {
+                    pairing: root,
+                    to_be_witnessed: WitnessedSet::default(),
+                }
+                .pop_min();
+                let (root, corrupted) = UnboundWitnessed::extract(root);
                 (
                     Self {
                         root,
