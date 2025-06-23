@@ -615,7 +615,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         loop {
             if queue.len() < EVERY_SECOND_LAYER {
                 return Self::merge_many(queue);
-            };
+            }
 
             if let Some(p) = Self::merge_many(
                 queue
@@ -669,7 +669,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
 
     pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
         // These two work, really well:
-        Self::merge_children_multi_pass_binary(items, corrupted)
+        // Self::merge_children_multi_pass_binary(items, corrupted)
         // Self::merge_children_multi_pass_binary_implicit(items, corrupted)
 
         // This one doesn't actually do any corruption
@@ -679,7 +679,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         // Self::merge_children_evenly(items, corrupted)
 
         // These ones work:
-        // Self::merge_children_pass_h(items, corrupted)
+        Self::merge_children_pass_h(items, corrupted)
         // Self::merge_children_pass_h_queue_simple(items, corrupted)
         // Self::merge_children_two_pass(items, corrupted)
         // Self::merge_children_two_pass_grouped(items, corrupted)

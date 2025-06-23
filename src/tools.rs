@@ -28,7 +28,7 @@ impl<T> Counted<T> {
     }
 }
 
-/* --- trait impls (unchanged in spirit) --- */
+/* --- trait implementations (unchanged in spirit) --- */
 
 impl<T: Ord> Ord for Counted<T> {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -52,6 +52,7 @@ impl<T: Ord> Eq for Counted<T> {}
 
 /// Consumes a vector, wraps every element, and returns
 /// `(shared_counter, wrapped_vector)`.
+#[must_use]
 pub fn with_counter<T: Ord>(v: Vec<T>) -> (Rc<Cell<usize>>, Vec<Counted<T>>) {
     let counter = Rc::new(Cell::new(0));
     let wrapped = v.into_iter().map(|x| Counted::new(x, &counter)).collect();

@@ -170,6 +170,18 @@ pub fn linear_loop<T: Ord + Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
     result
 }
 
+/// Processes operations iteratively, using primal and dual approaches.
+/// Returns a vector of elements that are definitely in the heap at the end.
+///
+/// # Panics
+///
+/// Panics if the operations list does not shrink by at least 1/6 of its size in each iteration.
+/// That's the case, when the soft heap corruption guarantee is violated.
+#[must_use]
+pub fn linear_loop_2<T: Ord + Debug + Clone>(_ops: Vec<Operation<T>>) -> Vec<T> {
+    todo!();
+}
+
 /// Approximates the heap operations in linear time using a soft heap
 ///
 /// This function approximates heap operations (using a soft heap).
