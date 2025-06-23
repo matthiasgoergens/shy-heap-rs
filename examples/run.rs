@@ -1,7 +1,8 @@
 // Run as
 //  RUST_MIN_STACK=16777216 cargo run --release --example run
 
-const EVERY: usize = 20;
+// const EVERY: usize = 2;
+const EVERY: usize = 2;
 const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
 
 use std::cmp::max;
@@ -21,13 +22,13 @@ pub fn one_batch() {
     // const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (3.0 * EVERY as f64 - ELOG as f64 - 2.0);
     // const EXPECTED_CORRUPTED_FRACTION: f64 = 1.0 / (EVERY as f64);
     println!("EVERY: {EVERY} one_batch random");
-    for e in 0..28 {
+    for e in 0..30 {
         let n = 1 << e;
 
         let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
         let mut x = (0..n).collect::<Vec<_>>();
 
-        // x.shuffle(&mut rand::rng());
+        x.shuffle(&mut rand::rng());
         let (counter, x) = with_counter(x);
         for (_index, item) in enumerate(x) {
             pairing = pairing.insert(item);
@@ -63,24 +64,17 @@ pub fn one_batch() {
             //     pairing.count_corrupted()
             // );
         }
-        // let ever_corrupted_fraction = all_corrupted as f64 / n as f64;
-        // print!(
-        //     "Corrupted fraction: {:.2}%\texponent: {e}\tn: {n:10}\t",
-        //     ever_corrupted_fraction * 100.0
-        // );
-        // let work = counter.get() as f64 / n as f64;
-        // let max_corrupted_fraction = max_corrupted as f64 / n as f64;
+        let ever_corrupted_fraction = all_corrupted as f64 / n as f64;
+        print!(
+            "crp: {all_corrupted:10}\tEver crp ratio: {:8.5}%\texpo: {e:3}\tn: {n:10}\t",
+            ever_corrupted_fraction * 100.0
+        );
+        let work = counter.get() as f64 / n as f64;
+        let max_corrupted_fraction = max_corrupted as f64 / n as f64;
         let remaining_work = counter.get() - prep_count;
-        // println!(
-        //     "Max corrupted fraction: {:6.5}%\t?< {:6.5}%\t{:10.6}\t{:10.6}\tlog-factor: {:10.6}",
-        //     max_corrupted as f64 / n as f64 * 100.0,
-        //     EXPECTED_CORRUPTED_FRACTION * 100.0,
-        //     remaining_work,
-        //     remaining_work as f64 / n as f64,
-        //     remaining_work as f64 / n as f64 / ((n as f64).log2()),
-        // );
         println!(
-            "\trem: {:10}\trem_ratio: {:11.6}\tlog-factor: {:10.6}",
+            "Max crp frac: {:8.5}%\trem work: {:10.6}\trem work/n: {:10.6}\tlog-factor: {:10.6}",
+            max_corrupted_fraction * 100.0,
             remaining_work,
             remaining_work as f64 / n as f64,
             remaining_work as f64 / n as f64 / ((n as f64).log2()),

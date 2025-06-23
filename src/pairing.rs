@@ -76,7 +76,10 @@ impl<const CORRUPT_EVERY_N: usize, T> Pairing<CORRUPT_EVERY_N, T> {
     }
 }
 
-const BOUND: usize = 2;
+// const BOUND: usize = 2;
+const BOUND: usize = 0;
+// const BOUND: usize = usize::MAX/2;
+// const BOUND: usize = 0;
 
 impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     #[must_use]
@@ -277,6 +280,37 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
                 (a, _) => return a,
             }
         }
+    }
+
+    pub fn merge_children_multi_pass_binary_implicit(
+        mut items: Vec<Self>,
+        corrupted: &mut Vec<T>,
+    ) -> Option<Self> {
+        let mut counter: usize = 0;
+        while items.len() > 1 {
+            let len = items.len();
+            let binding = items.into_iter().chunks(2);
+            let chunked = binding
+                .into_iter()
+                .filter_map(|chunk| chunk.reduce(Self::meld));
+            items = chunked.collect();
+            if len % 4 == 3 {
+                // Odd to even!
+                assert!(len % 2 == 1);
+                assert!(items.len() % 2 == 0);
+                counter += 1;
+                if counter > BOUND && (counter.saturating_sub(BOUND) % CORRUPT_EVERY_N == 0) {
+                    // After BOUND, corrupt every CORRUPT_EVERY_Nth item.
+                    if let Some(last) = items.pop() {
+                        items.push(last.corrupt(corrupted));
+                    }
+                }
+            } else {
+                // Assert: not odd to even.
+                assert!((len % 2 == 0) || (items.len() % 2 == 1));
+            }
+        }
+        items.into_iter().next()
     }
 
     pub fn merge_children_multi_pass_binary(
@@ -634,9 +668,12 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     }
 
     pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<Self> {
+        // These two work, really well:
+        Self::merge_children_multi_pass_binary(items, corrupted)
+        // Self::merge_children_multi_pass_binary_implicit(items, corrupted)
+
         // This one doesn't actually do any corruption
         // Self::merge_children_bounded(items, corrupted)
-        Self::merge_children_multi_pass_binary(items, corrupted)
 
         // This one seems to work, but it has a higher corruption rate for our parameter.
         // Self::merge_children_evenly(items, corrupted)
