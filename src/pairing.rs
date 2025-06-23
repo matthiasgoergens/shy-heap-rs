@@ -1,14 +1,11 @@
 // Soft heaps based on pairing heaps.
 // We do min-heaps by default.
 
-use std::{collections::VecDeque, iter::once};
+use std::collections::VecDeque;
 
 use itertools::{chain, Itertools};
 
-use crate::{
-    tools::previous_full_multiple,
-    witness_set::{Witnessed, WitnessedSet},
-};
+use crate::witness_set::{Witnessed, WitnessedSet};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Pool<T> {
@@ -71,7 +68,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
 
     #[must_use]
     pub fn meld(self, other: Self) -> Self {
-        let (mut a, b) = if self.pairing.key.item < other.pairing.key.item {
+        let (mut a, b) = if self.pairing.key.item <= other.pairing.key.item {
             (self, other)
         } else {
             (other, self)
@@ -180,28 +177,21 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
             .map(UnboundWitnessed::from)
             .collect::<Vec<_>>();
 
-        let end = items.len() % CORRUPT_EVERY_N;
-        let start = items.len() - end;
-        let start0 = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
-        // let start = items
-        //     .len()
-        //     .next_multiple_of(CORRUPT_EVERY_N)
-        //     .saturating_sub(CORRUPT_EVERY_N);
-        assert!(
-            start >= start0,
-            "start: {start}, start0: {start0}, items.len(): {}",
-            items.len()
-        );
+        let start = items
+            .len()
+            .next_multiple_of(CORRUPT_EVERY_N)
+            .saturating_sub(CORRUPT_EVERY_N);
+
         assert_eq!(0, start % CORRUPT_EVERY_N);
-        assert!(items.len() - start < CORRUPT_EVERY_N);
-        // assert!(items.len() >= 0);
+        assert!(items.len() - start <= CORRUPT_EVERY_N);
+
         let last = Self::merge_many(items.drain(start..));
         let binding = items.into_iter().chunks(CORRUPT_EVERY_N);
         let chunked = binding
             .into_iter()
             .filter_map(Self::merge_many)
             .map(UnboundWitnessed::corrupt);
-        Self::merge_many(chain!(chunked, once(last).flatten()))
+        Self::merge_many(chain!(chunked, last.into_iter()))
     }
 
     #[must_use]
@@ -219,16 +209,16 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
                     children,
                     witnessed,
                 },
-            mut to_be_witnessed,
+            to_be_witnessed: mut tbw_c,
         } = self;
         if let Some(UnboundWitnessed {
             pairing,
-            to_be_witnessed: tbw_c,
+            mut to_be_witnessed,
         }) = Self::merge_children(children)
         {
             // assert!(key.item <= pairing.key.item);
-            to_be_witnessed.add_child(Witnessed::singleton(key.item));
-            to_be_witnessed.extend(witnessed);
+            tbw_c.extend(witnessed);
+            tbw_c.add_child(Witnessed::singleton(key.item));
             to_be_witnessed.extend(tbw_c);
             Self {
                 to_be_witnessed,
@@ -239,12 +229,15 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
                 },
             }
         } else {
+            unreachable!(
+                "This should never happen, we should always have at least one child to corrupt."
+            );
             // Well, we have no children, so we can't actually corrupt anything.
             // This shouldn't happen.
-            Self {
-                pairing: Pairing::from(key),
-                to_be_witnessed,
-            }
+            // Self {
+            //     pairing: Pairing::from(key),
+            //     to_be_witnessed: tbw_c,
+            // }
         }
     }
 }
@@ -296,7 +289,7 @@ impl<const CORRUPT_EVERY_N: usize, T> Pairing<CORRUPT_EVERY_N, T> {
 
 impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     #[must_use]
-    pub fn meld(self, other: Self) -> Self {
+    pub fn meld_simple(self, other: Self) -> Self {
         let (mut a, b) = if self.key.item < other.key.item {
             (self, other)
         } else {
@@ -308,7 +301,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
 
     #[must_use]
     pub fn insert(self, item: T) -> Self {
-        self.meld(Self::new(item))
+        self.meld_simple(Self::new(item))
     }
 
     #[must_use]
@@ -316,7 +309,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         match (me, other) {
             (me, None) => me,
             (None, other) => other,
-            (Some(a), Some(b)) => Some(a.meld(b)),
+            (Some(a), Some(b)) => Some(a.meld_simple(b)),
         }
     }
 
