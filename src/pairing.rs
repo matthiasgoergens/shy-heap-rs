@@ -90,12 +90,15 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
 
     #[must_use]
     pub fn merge_many(
-        _items: impl IntoIterator<Item = UnboundWitnessed<CORRUPT_EVERY_N, T>>,
+        items: impl IntoIterator<Item = UnboundWitnessed<CORRUPT_EVERY_N, T>>,
     ) -> Option<UnboundWitnessed<CORRUPT_EVERY_N, T>> {
-        // let mut items = items.into_iter();
-        // let mut first = items.next()?;
-        // let mut to_be_witnessed = WitnessedSet::default();
-        todo!()
+        let mut d: VecDeque<_> = items.into_iter().collect();
+        loop {
+            match (d.pop_front(), d.pop_front()) {
+                (Some(a), Some(b)) => d.push_back(a.meld(b)),
+                (a, _) => return a,
+            }
+        }
     }
 
     #[must_use]
