@@ -10,7 +10,35 @@ use std::cmp::max;
 use itertools::enumerate;
 use rand::{seq::SliceRandom, Rng};
 use seq_macro::seq;
-use softheap::{pairing::SoftHeap, tools::with_counter}; // Add import for seq_macro
+use softheap::{
+    pairing::{Pairing, SoftHeap, UnboundWitnessed},
+    tools::with_counter,
+    witness_set::{Witnessed, WitnessedSet},
+}; // Add import for seq_macro
+
+pub fn dbg() {
+    let a: UnboundWitnessed<EVERY, i32> = {
+        let mut to_be_witnessed = WitnessedSet::<i32>::default();
+        to_be_witnessed.add_child(Witnessed::singleton(1));
+        UnboundWitnessed {
+            to_be_witnessed,
+            pairing: Pairing::new(2),
+        }
+    };
+
+    let b: UnboundWitnessed<EVERY, i32> = {
+        let mut to_be_witnessed = WitnessedSet::<i32>::default();
+        to_be_witnessed.add_child(Witnessed::singleton(3));
+        UnboundWitnessed {
+            to_be_witnessed,
+            pairing: Pairing::new(4),
+        }
+    };
+    println!("a: {a:#?}",);
+    println!("b: {b:#?}",);
+    let c = a.meld(b);
+    println!("a.meld(b): {c:#?}",);
+}
 
 pub fn one_batch_db() {
     println!("EVERY: {EVERY} one_batch debug");
@@ -364,4 +392,5 @@ pub fn main() {
     // sort_n();
     // one_batch_meld();
     one_batch_db();
+    // dbg();
 }

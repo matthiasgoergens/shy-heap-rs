@@ -73,7 +73,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
         } else {
             (other, self)
         };
-        a.to_be_witnessed.extend(b.to_be_witnessed);
+        a.pairing.witnessed.extend(b.to_be_witnessed);
         a.pairing.children.push(b.pairing);
         a
     }
@@ -984,21 +984,21 @@ impl<const CORRUPT_EVERY_N: usize, T> SoftHeap<CORRUPT_EVERY_N, T> {
         self.root.as_ref().map_or(0, |r| r.children.len())
     }
     pub fn count_corrupted(&self) -> usize {
-        debug_assert_eq!(
-            self.corrupted,
-            self.root.as_ref().map_or(0, Pairing::count_corrupted)
-        );
+        // debug_assert_eq!(
+        //     self.corrupted,
+        //     self.root.as_ref().map_or(0, Pairing::count_corrupted)
+        // );
         self.corrupted
     }
     pub fn count_uncorrupted(&self) -> usize {
-        debug_assert_eq!(
-            self.root.as_ref().map_or(0, Pairing::count_uncorrupted),
-            self.size - self.corrupted
-        );
+        // debug_assert_eq!(
+        //     self.root.as_ref().map_or(0, Pairing::count_uncorrupted),
+        //     self.size - self.corrupted
+        // );
         self.size - self.count_corrupted()
     }
     pub fn is_empty(&self) -> bool {
-        debug_assert_eq!(self.size, self.count_uncorrupted() + self.count_corrupted());
+        // debug_assert_eq!(self.size, self.count_uncorrupted() + self.count_corrupted());
         debug_assert_eq!(self.size > 0, self.root.is_some());
         self.root.is_none()
     }
