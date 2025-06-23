@@ -2,7 +2,7 @@
 //  RUST_MIN_STACK=16777216 cargo run --release --example run
 
 // const EVERY: usize = 2;
-const EVERY: usize = 8;
+const EVERY: usize = 4;
 // const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
 
 use std::cmp::max;
@@ -19,16 +19,19 @@ pub fn one_batch_db() {
     let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
     let mut x = (0..n).collect::<Vec<_>>();
     x.shuffle(&mut rand::rng());
-    let (counter, x) = with_counter(x);
+    let (_counter, x) = with_counter(x);
     for (_index, item) in enumerate(x) {
         pairing = pairing.insert(item);
     }
     while !pairing.is_empty() {
-        let (new_pairing, _pool, _corrupted) = pairing.heavy_delete_min();
+        let (new_pairing, _pool, corrupted) = pairing.heavy_delete_min();
         pairing = new_pairing;
         let delayed = pairing.count_delayed_corruption();
         if delayed > 0 {
             println!("left: {}, delayed: {}", pairing.size, delayed);
+        }
+        if !corrupted.is_empty() {
+            println!("Newly corrupted: {}\t", corrupted.len());
         }
         // println!("delayed: {}", pairing.count_delayed_corruption());
     }
