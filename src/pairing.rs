@@ -5,7 +5,10 @@ use std::{collections::VecDeque, iter::once};
 
 use itertools::{chain, Itertools};
 
-use crate::{tools::previous_full_multiple, witness_set::WitnessedSet};
+use crate::{
+    tools::previous_full_multiple,
+    witness_set::{Witnessed, WitnessedSet},
+};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Pool<T> {
@@ -79,13 +82,52 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
     }
 
     #[must_use]
-    pub fn pop_min(self) -> (Option<Self>, Option<T>) {
-        todo!();
-        // if let Some(_me) = Self::merge_children(self.pairing.children) {
-        //     todo!()
-        // } else {
-        //     todo!()
-        // }
+    pub fn pop_min(
+        self,
+    ) -> (
+        Option<Pairing<CORRUPT_EVERY_N, T>>,
+        Option<T>,
+        WitnessedSet<T>,
+    ) {
+        let UnboundWitnessed {
+            pairing:
+                Pairing {
+                    key,
+                    children,
+                    witnessed,
+                },
+            mut to_be_witnessed,
+        } = self;
+        let (new_me, deleted_item) = match key.delete_one() {
+            Ok(key) => (
+                Some(Pairing {
+                    key,
+                    witnessed,
+                    children,
+                }),
+                None,
+            ),
+            Err(item) => (
+                if let Some(UnboundWitnessed {
+                    to_be_witnessed: tbc,
+                    pairing,
+                }) = Self::merge_children(children)
+                {
+                    to_be_witnessed.extend(witnessed);
+                    to_be_witnessed.extend(tbc);
+                    Some(pairing)
+                } else {
+                    None
+                },
+                Some(item),
+            ),
+        };
+
+        (new_me, deleted_item, to_be_witnessed)
+    }
+
+    pub fn heavy_pop_min(self) -> (Option<Self>, Pool<T>, Vec<T>) {
+        todo!()
     }
 
     #[must_use]
@@ -139,9 +181,6 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
         Self::merge_children_pass_h(children)
     }
 
-    pub fn heavy_pop_min(self) -> (Option<Self>, Pool<T>, Vec<T>) {
-        todo!()
-    }
     #[must_use]
     pub fn corrupt(self) -> Self {
         // TODO(Matthias): this is like a heavy pop-min, so we should unify?  Maybe..
@@ -160,6 +199,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
         }) = Self::merge_children(children)
         {
             // assert!(key.item <= pairing.key.item);
+            to_be_witnessed.add_child(Witnessed::singleton(key.item));
             to_be_witnessed.extend(witnessed);
             to_be_witnessed.extend(tbw_c);
             Self {
@@ -890,20 +930,19 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
         match self.root {
             None => (Self::default(), None, vec![]),
             Some(root) => {
-                let (root, item) = UnboundWitnessed {
+                let (root, item, corrupted) = UnboundWitnessed {
                     pairing: root,
                     to_be_witnessed: WitnessedSet::default(),
                 }
                 .pop_min();
-                let (root, corrupted) = UnboundWitnessed::extract(root);
                 (
                     Self {
                         root,
                         size: self.size - 1,
-                        corrupted: self.corrupted + corrupted.len() - usize::from(item.is_none()),
+                        corrupted: self.corrupted + corrupted.count - usize::from(item.is_none()),
                     },
                     item,
-                    corrupted,
+                    Vec::from(corrupted),
                 )
             }
         }
