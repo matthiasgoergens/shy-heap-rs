@@ -280,6 +280,15 @@ impl<const CORRUPT_EVERY_N: usize, T> Pairing<CORRUPT_EVERY_N, T> {
             .map(Pairing::count_uncorrupted)
             .sum::<usize>()
     }
+
+    pub fn count_delayed_corruption(&self) -> usize {
+        self.witnessed.count
+            + self
+                .children
+                .iter()
+                .map(Pairing::count_delayed_corruption)
+                .sum::<usize>()
+    }
 }
 
 // const BOUND: usize = 2;
@@ -965,6 +974,12 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
     }
 }
 impl<const CORRUPT_EVERY_N: usize, T> SoftHeap<CORRUPT_EVERY_N, T> {
+    pub fn count_delayed_corruption(&self) -> usize {
+        self.root
+            .as_ref()
+            .map_or(0, Pairing::count_delayed_corruption)
+    }
+
     pub fn count_children(&self) -> usize {
         self.root.as_ref().map_or(0, |r| r.children.len())
     }

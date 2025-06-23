@@ -2,7 +2,7 @@
 //  RUST_MIN_STACK=16777216 cargo run --release --example run
 
 // const EVERY: usize = 2;
-const EVERY: usize = 3;
+const EVERY: usize = 8;
 // const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
 
 use std::cmp::max;
@@ -11,6 +11,31 @@ use itertools::enumerate;
 use rand::{seq::SliceRandom, Rng};
 use seq_macro::seq;
 use softheap::{pairing::SoftHeap, tools::with_counter}; // Add import for seq_macro
+
+pub fn one_batch_db() {
+    println!("EVERY: {EVERY} one_batch debug");
+    let e = 15;
+    let n = 1 << e;
+    let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
+    let mut x = (0..n).collect::<Vec<_>>();
+    x.shuffle(&mut rand::rng());
+    let (counter, x) = with_counter(x);
+    for (_index, item) in enumerate(x) {
+        pairing = pairing.insert(item);
+    }
+    while !pairing.is_empty() {
+        let (new_pairing, _pool, _corrupted) = pairing.heavy_delete_min();
+        pairing = new_pairing;
+        let delayed = pairing.count_delayed_corruption();
+        if delayed > 0 {
+            println!("left: {}, delayed: {}", pairing.size, delayed);
+        }
+        // println!("delayed: {}", pairing.count_delayed_corruption());
+    }
+
+    // let prep_count = counter.get();
+    // println!("{:#?}", pairing);
+}
 
 pub fn one_batch() {
     // let n = 10_000_000;
@@ -330,9 +355,10 @@ pub fn sort_n() {
 }
 
 pub fn main() {
-    one_batch();
+    // one_batch();
     // interleave();
     // interleave_n();
     // sort_n();
     // one_batch_meld();
+    one_batch_db();
 }
