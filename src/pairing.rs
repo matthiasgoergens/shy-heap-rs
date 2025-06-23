@@ -113,10 +113,12 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
                     pairing,
                 }) = Self::merge_children(children)
                 {
+                    // This might need to change?  TODO: we always need to do this.
                     to_be_witnessed.extend(witnessed);
                     to_be_witnessed.extend(tbc);
                     Some(pairing)
                 } else {
+                    to_be_witnessed.extend(witnessed);
                     None
                 },
                 Some(item),
@@ -126,8 +128,34 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
         (new_me, deleted_item, to_be_witnessed)
     }
 
-    pub fn heavy_pop_min(self) -> (Option<Self>, Pool<T>, Vec<T>) {
-        todo!()
+    pub fn heavy_pop_min(
+        self,
+    ) -> (
+        Option<Pairing<CORRUPT_EVERY_N, T>>,
+        Pool<T>,
+        WitnessedSet<T>,
+    ) {
+        let UnboundWitnessed {
+            pairing:
+                Pairing {
+                    key,
+                    children,
+                    witnessed,
+                },
+            mut to_be_witnessed,
+        } = self;
+        to_be_witnessed.extend(witnessed);
+
+        let new_me = Self::merge_children(children).map(
+            |UnboundWitnessed {
+                 to_be_witnessed: tbc,
+                 pairing,
+             }| {
+                to_be_witnessed.extend(tbc);
+                pairing
+            },
+        );
+        (new_me, key, to_be_witnessed)
     }
 
     #[must_use]
@@ -906,22 +934,21 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
 
     #[must_use]
     pub fn heavy_delete_min(self) -> (Self, Option<T>, Vec<T>) {
-        todo!()
-        // match self.root {
-        //     None => (Self::default(), None, vec![]),
-        //     Some(root) => {
-        //         let (root, pool, corrupted) = root.heavy_delete_min();
-        //         (
-        //             Self {
-        //                 root,
-        //                 size: self.size - pool.count - 1,
-        //                 corrupted: self.corrupted + corrupted.len() - pool.count,
-        //             },
-        //             Some(pool.item),
-        //             corrupted,
-        //         )
-        //     }
-        // }
+        match self.root {
+            None => (Self::default(), None, vec![]),
+            Some(root) => {
+                let (root, pool, corrupted) = UnboundWitnessed::from(root).heavy_pop_min();
+                (
+                    Self {
+                        root,
+                        size: self.size - pool.count - 1,
+                        corrupted: self.corrupted + corrupted.count - pool.count,
+                    },
+                    Some(pool.item),
+                    Vec::from(corrupted),
+                )
+            }
+        }
     }
 
     #[must_use]
@@ -930,11 +957,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
         match self.root {
             None => (Self::default(), None, vec![]),
             Some(root) => {
-                let (root, item, corrupted) = UnboundWitnessed {
-                    pairing: root,
-                    to_be_witnessed: WitnessedSet::default(),
-                }
-                .pop_min();
+                let (root, item, corrupted) = UnboundWitnessed::from(root).pop_min();
                 (
                     Self {
                         root,
