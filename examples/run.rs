@@ -2,9 +2,9 @@
 //  RUST_MIN_STACK=16777216 cargo run --release --example run
 
 // const EVERY: usize = 2;
-const EVERY: usize = 6;
+const EVERY: usize = 4;
 // const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
-const MAX_THREADS: usize = 4; // Configurable number of processors for parallel execution
+const MAX_THREADS: usize = 32; // Configurable number of processors for parallel execution
 
 use std::cmp::max;
 
@@ -434,7 +434,7 @@ where
                 // Try to print as many results as possible in order
                 let mut next = next_to_print.lock().unwrap();
                 while let Some(result) = completed.get(&*next) {
-                    print!("{}", result);
+                    print!("{result}");
                     completed.remove(&*next);
                     *next += 1;
                 }
@@ -445,8 +445,7 @@ where
 
 pub fn one_batch_parallel() {
     println!(
-        "EVERY: {EVERY} one_batch random (parallel with {} threads)",
-        MAX_THREADS
+        "EVERY: {EVERY} one_batch random (parallel with {MAX_THREADS} threads)"
     );
 
     run_parallel(0..30, |e| {
@@ -536,8 +535,7 @@ fn one_batch_single(e: usize) -> String {
 /// More flexible version that can work with any range
 pub fn one_batch_parallel_range(start: usize, end: usize) {
     println!(
-        "EVERY: {EVERY} one_batch random (parallel with {} threads, range {}-{})",
-        MAX_THREADS, start, end
+        "EVERY: {EVERY} one_batch random (parallel with {MAX_THREADS} threads, range {start}-{end})"
     );
 
     run_parallel(start..end, one_batch_single);
