@@ -1,9 +1,9 @@
 // Soft heaps based on pairing heaps.
 // We do min-heaps by default.
 
-use std::collections::VecDeque;
-
 use itertools::{chain, Itertools};
+use std::collections::VecDeque;
+use std::ops::Add;
 
 use crate::witness_set::{Witnessed, WitnessedSet};
 
@@ -179,6 +179,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
 
         let start = items
             .len()
+            .add(1)
             .next_multiple_of(CORRUPT_EVERY_N)
             .saturating_sub(CORRUPT_EVERY_N);
 

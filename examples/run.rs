@@ -2,7 +2,7 @@
 //  RUST_MIN_STACK=16777216 cargo run --release --example run
 
 // const EVERY: usize = 2;
-const EVERY: usize = 4;
+const EVERY: usize = 6;
 // const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
 
 use std::cmp::max;
@@ -386,11 +386,11 @@ pub fn sort_n() {
 }
 
 pub fn main() {
-    // one_batch();
+    one_batch();
     // interleave();
     // interleave_n();
     // sort_n();
     // one_batch_meld();
-    one_batch_db();
+    // one_batch_db();
     // dbg();
 }
