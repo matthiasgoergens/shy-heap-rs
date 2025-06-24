@@ -11,6 +11,7 @@ proptest = "1.7"
 rand = "0.9.1"
 random = "0.14.0"
 seq-macro = "0.3.6"
+rayon = "1.8"
 
 [profile.test]
 lto = "thin"

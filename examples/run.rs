@@ -4,11 +4,13 @@
 // const EVERY: usize = 2;
 const EVERY: usize = 6;
 // const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
+const MAX_THREADS: usize = 4; // Configurable number of processors for parallel execution
 
 use std::cmp::max;
 
 use itertools::enumerate;
 use rand::{seq::SliceRandom, Rng};
+use rayon::prelude::*;
 use seq_macro::seq;
 use softheap::{
     pairing::{Pairing, SoftHeap, UnboundWitnessed},
@@ -385,8 +387,192 @@ pub fn sort_n() {
     });
 }
 
+/// Generic parallel wrapper that runs a function over a range in parallel
+/// and prints results in order as they complete
+///
+/// # Arguments
+/// * `range` - The range of values to process (must implement IntoParallelIterator)
+/// * `f` - A function that takes a usize and returns a String to be printed
+///
+/// # Example
+/// ```
+/// run_parallel(0..10, |i| format!("Processed item {}\n", i));
+/// ```
+///
+/// This will process items 0-9 in parallel using MAX_THREADS threads,
+/// and print the results in order (0, 1, 2, ...) as they complete.
+pub fn run_parallel<F, R>(range: R, f: F)
+where
+    F: Fn(usize) -> String + Send + Sync,
+    R: IntoParallelIterator<Item = usize> + Send,
+    R::Iter: IndexedParallelIterator,
+{
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    // Shared state for tracking completed results and next expected result
+    let completed_results: Arc<Mutex<HashMap<usize, String>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let next_to_print: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+
+    // Create a thread pool with the specified number of threads
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(MAX_THREADS)
+        .build()
+        .unwrap();
+
+    // Process the range in parallel
+    pool.install(|| {
+        range.into_par_iter().for_each(|e| {
+            let result = f(e);
+
+            // Store the result and try to print in order
+            {
+                let mut completed = completed_results.lock().unwrap();
+                completed.insert(e, result);
+
+                // Try to print as many results as possible in order
+                let mut next = next_to_print.lock().unwrap();
+                while let Some(result) = completed.get(&*next) {
+                    print!("{}", result);
+                    completed.remove(&*next);
+                    *next += 1;
+                }
+            }
+        });
+    });
+}
+
+pub fn one_batch_parallel() {
+    println!(
+        "EVERY: {EVERY} one_batch random (parallel with {} threads)",
+        MAX_THREADS
+    );
+
+    run_parallel(0..30, |e| {
+        let n = 1 << e;
+
+        let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
+        let mut x = (0..n).collect::<Vec<_>>();
+
+        x.shuffle(&mut rand::rng());
+        let (counter, x) = with_counter(x);
+        for (_index, item) in enumerate(x) {
+            pairing = pairing.insert(item);
+        }
+
+        let prep_count = counter.get();
+        let count_ratio = prep_count as f64 / (n as f64 - 1.0);
+
+        let mut all_corrupted = 0;
+        let mut max_corrupted = 0;
+
+        while !pairing.is_empty() {
+            let (new_pairing, _item, newly_corrupted) = pairing.heavy_delete_min();
+            all_corrupted += newly_corrupted.len();
+            pairing = new_pairing;
+            max_corrupted = max(max_corrupted, pairing.count_corrupted());
+        }
+
+        let ever_corrupted_fraction = all_corrupted as f64 / n as f64;
+        let max_corrupted_fraction = max_corrupted as f64 / n as f64;
+        let remaining_work = counter.get() - prep_count;
+        let remaining_work_per_n = remaining_work as f64 / n as f64;
+        let log_factor = remaining_work_per_n / ((n as f64).log2());
+
+        format!(
+            "cmp: {prep_count:10}\tcmp_ratio: {count_ratio:10.6}\tcrp: {all_corrupted:10}\tEver crp ratio: {:8.5}%\texpo: {e:3}\tn: {n:10}\tMax crp frac: {:8.5}%\trem work: {:10.6}\trem work/n: {:10.6}\tlog-factor: {:10.6}\n",
+            ever_corrupted_fraction * 100.0,
+            max_corrupted_fraction * 100.0,
+            remaining_work,
+            remaining_work_per_n,
+            log_factor,
+        )
+    });
+}
+
+/// Helper function that contains the one_batch logic for a single exponent
+fn one_batch_single(e: usize) -> String {
+    let n = 1 << e;
+
+    let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
+    let mut x = (0..n).collect::<Vec<_>>();
+
+    x.shuffle(&mut rand::rng());
+    let (counter, x) = with_counter(x);
+    for (_index, item) in enumerate(x) {
+        pairing = pairing.insert(item);
+    }
+
+    let prep_count = counter.get();
+    let count_ratio = prep_count as f64 / (n as f64 - 1.0);
+
+    let mut all_corrupted = 0;
+    let mut max_corrupted = 0;
+
+    while !pairing.is_empty() {
+        let (new_pairing, _item, newly_corrupted) = pairing.heavy_delete_min();
+        all_corrupted += newly_corrupted.len();
+        pairing = new_pairing;
+        max_corrupted = max(max_corrupted, pairing.count_corrupted());
+    }
+
+    let ever_corrupted_fraction = all_corrupted as f64 / n as f64;
+    let max_corrupted_fraction = max_corrupted as f64 / n as f64;
+    let remaining_work = counter.get() - prep_count;
+    let remaining_work_per_n = remaining_work as f64 / n as f64;
+    let log_factor = remaining_work_per_n / ((n as f64).log2());
+
+    format!(
+        "cmp: {prep_count:10}\tcmp_ratio: {count_ratio:10.6}\tcrp: {all_corrupted:10}\tEver crp ratio: {:8.5}%\texpo: {e:3}\tn: {n:10}\tMax crp frac: {:8.5}%\trem work: {:10.6}\trem work/n: {:10.6}\tlog-factor: {:10.6}\n",
+        ever_corrupted_fraction * 100.0,
+        max_corrupted_fraction * 100.0,
+        remaining_work,
+        remaining_work_per_n,
+        log_factor,
+    )
+}
+
+/// More flexible version that can work with any range
+pub fn one_batch_parallel_range(start: usize, end: usize) {
+    println!(
+        "EVERY: {EVERY} one_batch random (parallel with {} threads, range {}-{})",
+        MAX_THREADS, start, end
+    );
+
+    run_parallel(start..end, one_batch_single);
+}
+
+/// Generic parallel function that can work with any function
+pub fn run_parallel_generic<F>(range: std::ops::Range<usize>, f: F, description: &str)
+where
+    F: Fn(usize) -> String + Send + Sync,
+{
+    println!(
+        "{} (parallel with {} threads, range {}-{})",
+        description, MAX_THREADS, range.start, range.end
+    );
+
+    run_parallel(range, f);
+}
+
+/// Simple test function to demonstrate the parallel wrapper
+pub fn test_parallel() {
+    println!("Testing parallel wrapper with simple computation...");
+
+    run_parallel(0..10, |i| {
+        // Simulate some work
+        std::thread::sleep(std::time::Duration::from_millis(100 * (10 - i) as u64));
+        format!("Processed item {} (took {}ms)\n", i, 100 * (10 - i))
+    });
+}
+
 pub fn main() {
-    one_batch();
+    one_batch_parallel();
+    // test_parallel();  // Uncomment to test the parallel wrapper with simple computation
+    // one_batch_parallel_range(0, 30);  // Same as above but with explicit range
+    // run_parallel_generic(0..30, one_batch_single, "EVERY: {EVERY} one_batch random");  // Most generic version
+    // one_batch();  // Original sequential version
     // interleave();
     // interleave_n();
     // sort_n();
