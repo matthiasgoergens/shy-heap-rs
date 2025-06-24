@@ -1,3 +1,5 @@
+use itertools::chain;
+
 // Schubert matroids.
 use crate::pairing::SoftHeap;
 use std::option::Option;
@@ -7,6 +9,21 @@ use std::{cmp::Reverse, fmt::Debug};
 pub enum Operation<T> {
     Insert(T),
     DeleteMin,
+}
+
+/// Name for Haskell's `sequenceA :: Applicative f => t (f a) -> f (t a) `
+pub fn sequence<T>(ops: Operation<Option<T>>) -> Option<Operation<T>> {
+    match ops {
+        Operation::Insert(x) => x.map(Operation::Insert),
+        Operation::DeleteMin => Some(Operation::DeleteMin),
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Judgement {
+    Survivor,
+    Uncertain,
+    Deleted,
 }
 
 impl<T> Operation<T> {
@@ -179,7 +196,53 @@ pub fn linear_loop<T: Ord + Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
 /// That's the case, when the soft heap corruption guarantee is violated.
 #[must_use]
 pub fn linear_loop_2<T: Ord + Debug + Clone>(_ops: Vec<Operation<T>>) -> Vec<T> {
-    todo!();
+    todo!()
+}
+
+#[must_use]
+pub fn approximate_heap_2<const CHUNKS: usize, T: Ord + Debug + Clone>(
+    _ops: Vec<Operation<T>>,
+) -> Vec<Operation<(T, Judgement)>> {
+    todo!()
+}
+
+#[must_use]
+pub fn approximate_heap_oracle<const CHUNKS: usize, T: Ord + Debug + Clone>(
+    ops: Vec<Operation<T>>,
+) -> Vec<Operation<(T, Judgement)>> {
+    // Preliminary mark all as potential survivors.
+    // Later, we will unmark some as uncertain.
+    let mut wrapped_ops: Vec<Operation<(T, Judgement)>> = ops
+        .into_iter()
+        .map(|op| op.map(|x| (x, Judgement::Survivor)))
+        .collect();
+
+    // Run the actual heap operations:
+    let _: SoftHeap<CHUNKS, &mut (T, Judgement)> =
+        wrapped_ops
+            .iter_mut()
+            .fold(SoftHeap::default(), |heap, op| match op {
+                Operation::Insert(x) => heap.insert(x),
+                Operation::DeleteMin => {
+                    let (new_heap, popped_item, corrupted) = heap.pop_min();
+                    for (_item, judgement) in chain!(popped_item, corrupted) {
+                        *judgement = Judgement::Uncertain;
+                    }
+                    new_heap
+                }
+            });
+    wrapped_ops
+
+    // // Use the heap to collect guaranteed survivors from the sequence of operations,
+    // // and leave tombstones in their stead.
+    // let guaranteed_survivors: Vec<T> = Vec::from(heap)
+    //     .into_iter()
+    //     .filter_map(Option::take)
+    //     .collect();
+    // // Clean up the tombstones to get a clean vector of left-over operations:
+    // let left_over_ops: Vec<Operation<T>> = wrapped_ops.into_iter().filter_map(sequence).collect();
+
+    // (left_over_ops, guaranteed_survivors)
 }
 
 /// Approximates the heap operations in linear time using a soft heap
@@ -219,7 +282,7 @@ pub fn approximate_heap<const CHUNKS: usize, T: Ord + Debug + Clone>(
             .iter_mut()
             .fold(SoftHeap::default(), |heap, op| match op {
                 Operation::Insert(x) => heap.insert(x),
-                Operation::DeleteMin => heap.delete_min().0,
+                Operation::DeleteMin => heap.pop_min().0,
             });
 
     // Use the heap to collect guaranteed survivors from the sequence of operations,
@@ -229,13 +292,7 @@ pub fn approximate_heap<const CHUNKS: usize, T: Ord + Debug + Clone>(
         .filter_map(Option::take)
         .collect();
     // Clean up the tombstones to get a clean vector of left-over operations:
-    let left_over_ops: Vec<Operation<T>> = wrapped_ops
-        .into_iter()
-        .filter_map(|op| match op {
-            Operation::Insert(x) => x.map(Operation::Insert),
-            Operation::DeleteMin => Some(Operation::DeleteMin),
-        })
-        .collect();
+    let left_over_ops: Vec<Operation<T>> = wrapped_ops.into_iter().filter_map(sequence).collect();
 
     (left_over_ops, guaranteed_survivors)
 }
@@ -371,7 +428,7 @@ mod tests {
     pub fn simulate_pairing_debug<T: Ord + std::fmt::Debug + Clone>(
         ops: Vec<Operation<T>>,
     ) -> Vec<T> {
-        // TODO: this looks suspicious.  Corrupting ever first (or even every second) element shouldn't corrupt much more in total?
+        // TODO: this looks suspicious.  Corrupting every first (or even every second) element shouldn't corrupt much more in total?
 
         // CHUNKS>=8 and EPS = 6 seem to work.
         // Chunks>=6 and EPS=3 also seem to work.
@@ -387,7 +444,7 @@ mod tests {
                     inserts_so_far += 1;
                     pairing.insert(x)
                 }
-                Operation::DeleteMin => pairing.delete_min().0,
+                Operation::DeleteMin => pairing.pop_min().0,
             };
             let un = pairing.count_uncorrupted();
             let co = pairing.count_corrupted();
@@ -426,7 +483,7 @@ mod tests {
         // assert!(corrupted.len() >= 1);
         // assert_eq!(corrupted.len(), pairing.count_corrupted());
 
-        let (new_pairing, _item, corrupted) = pairing.delete_min();
+        let (new_pairing, _item, corrupted) = pairing.pop_min();
         pairing = new_pairing;
 
         assert_eq!(corrupted.len(), pairing.count_corrupted());
@@ -446,7 +503,7 @@ mod tests {
         while pairing.count_uncorrupted() > 0 {
             assert!(pairing.count_corrupted() * EPS <= n);
 
-            let (new_pairing, _, _) = pairing.delete_min();
+            let (new_pairing, _, _) = pairing.pop_min();
             pairing = new_pairing;
         }
     }

@@ -54,7 +54,7 @@ pub fn one_batch_db() {
         pairing = pairing.insert(item);
     }
     while !pairing.is_empty() {
-        let (new_pairing, _pool, corrupted) = pairing.heavy_delete_min();
+        let (new_pairing, _pool, corrupted) = pairing.heavy_pop_min();
         pairing = new_pairing;
         let delayed = pairing.count_delayed_corruption();
         if delayed > 0 {
@@ -103,7 +103,7 @@ pub fn one_batch() {
         // let mut c = 0;
         while !pairing.is_empty() {
             // c += 1;
-            let (new_pairing, _item, newly_corrupted) = pairing.heavy_delete_min();
+            let (new_pairing, _item, newly_corrupted) = pairing.heavy_pop_min();
             // let (new_pairing, _item, newly_corrupted) = pairing.delete_min();
             all_corrupted += newly_corrupted.len();
             pairing = new_pairing;
@@ -177,7 +177,7 @@ pub fn one_batch_meld() {
         // let mut c = 0;
         while !pairing.is_empty() {
             // c += 1;
-            let (new_pairing, _item, _newly_corrupted) = pairing.heavy_delete_min();
+            let (new_pairing, _item, _newly_corrupted) = pairing.heavy_pop_min();
             // let (new_pairing, _item, newly_corrupted) = pairing.delete_min();
             // all_corrupted += newly_corrupted.len();
             pairing = new_pairing;
@@ -244,7 +244,7 @@ pub fn interleave() {
             // if c % (EVERY-2) == 0 {
             if c % 2 == 0 {
                 // while pairing.count_children() > 0 && pairing.count_children() % EVERY == 0 {
-                let (new_pairing, item, newly_corrupted) = pairing.delete_min();
+                let (new_pairing, item, newly_corrupted) = pairing.pop_min();
                 all_corrupted += newly_corrupted.len();
                 non_corrupted_pops += usize::from(item.is_some());
                 pairing = new_pairing;
@@ -261,7 +261,7 @@ pub fn interleave() {
         );
         while !pairing.is_empty() {
             // c += 1;
-            let (new_pairing, item, newly_corrupted) = pairing.delete_min();
+            let (new_pairing, item, newly_corrupted) = pairing.pop_min();
             all_corrupted += newly_corrupted.len();
             non_corrupted_pops += usize::from(item.is_some());
             pairing = new_pairing;
@@ -314,14 +314,14 @@ pub fn interleave1<const EVERY: usize>() -> f64 {
         if c % 2 == 0 {
             // while pairing.count_children() > EVERY && pairing.count_children() % EVERY == 0 {
             // while pairing.count_children() > EVERY {
-            let (new_pairing, item, newly_corrupted) = pairing.delete_min();
+            let (new_pairing, item, newly_corrupted) = pairing.pop_min();
             all_corrupted += newly_corrupted.len();
             _non_corrupted_pops += usize::from(item.is_some()); // Changed to _non_corrupted_pops
             pairing = new_pairing;
         }
     }
     while !pairing.is_empty() {
-        let (new_pairing, item, newly_corrupted) = pairing.delete_min();
+        let (new_pairing, item, newly_corrupted) = pairing.pop_min();
         all_corrupted += newly_corrupted.len();
         _non_corrupted_pops += usize::from(item.is_some()); // Changed to _non_corrupted_pops
         pairing = new_pairing;
@@ -351,7 +351,7 @@ pub fn sort1<const EVERY: usize>() -> (f64, f64) {
         max_corrupted = max(max_corrupted, pairing.count_corrupted());
     }
     while !pairing.is_empty() {
-        let (new_pairing, item, newly_corrupted) = pairing.delete_min();
+        let (new_pairing, item, newly_corrupted) = pairing.pop_min();
         all_corrupted += newly_corrupted.len();
         _non_corrupted_pops += usize::from(item.is_some()); // Changed to _non_corrupted_pops
         pairing = new_pairing;
@@ -444,9 +444,7 @@ where
 }
 
 pub fn one_batch_parallel() {
-    println!(
-        "EVERY: {EVERY} one_batch random (parallel with {MAX_THREADS} threads)"
-    );
+    println!("EVERY: {EVERY} one_batch random (parallel with {MAX_THREADS} threads)");
 
     run_parallel(0..30, |e| {
         let n = 1 << e;
@@ -467,7 +465,7 @@ pub fn one_batch_parallel() {
         let mut max_corrupted = 0;
 
         while !pairing.is_empty() {
-            let (new_pairing, _item, newly_corrupted) = pairing.heavy_delete_min();
+            let (new_pairing, _item, newly_corrupted) = pairing.heavy_pop_min();
             all_corrupted += newly_corrupted.len();
             pairing = new_pairing;
             max_corrupted = max(max_corrupted, pairing.count_corrupted());
@@ -510,7 +508,7 @@ fn one_batch_single(e: usize) -> String {
     let mut max_corrupted = 0;
 
     while !pairing.is_empty() {
-        let (new_pairing, _item, newly_corrupted) = pairing.heavy_delete_min();
+        let (new_pairing, _item, newly_corrupted) = pairing.heavy_pop_min();
         all_corrupted += newly_corrupted.len();
         pairing = new_pairing;
         max_corrupted = max(max_corrupted, pairing.count_corrupted());

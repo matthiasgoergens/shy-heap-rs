@@ -936,7 +936,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
     }
 
     #[must_use]
-    pub fn heavy_delete_min(self) -> (Self, Option<T>, Vec<T>) {
+    pub fn heavy_pop_min(self) -> (Self, Option<T>, Vec<T>) {
         match self.root {
             None => (Self::default(), None, vec![]),
             Some(root) => {
@@ -955,7 +955,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
     }
 
     #[must_use]
-    pub fn delete_min(self) -> (Self, Option<T>, Vec<T>) {
+    pub fn pop_min(self) -> (Self, Option<T>, Vec<T>) {
         // TODO: simplify.
         match self.root {
             None => (Self::default(), None, vec![]),
