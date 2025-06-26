@@ -991,3 +991,65 @@ impl<const CORRUPT_EVERY_N: usize, T> From<SoftHeap<CORRUPT_EVERY_N, T>> for Vec
         root.map(Vec::from).unwrap_or_default()
     }
 }
+
+pub struct LateHeap<const CORRUPT_EVERY_N: usize, T> {
+    pub root: Option<Pairing<CORRUPT_EVERY_N, T>>,
+    pub size: usize,
+    pub corrupted: usize,
+}
+
+impl<const CORRUPT_EVERY_N: usize, T> Default for LateHeap<CORRUPT_EVERY_N, T> {
+    fn default() -> Self {
+        Self {
+            root: None,
+            size: 0,
+            corrupted: 0,
+        }
+    }
+}
+
+impl<const CORRUPT_EVERY_N: usize, T: Ord> LateHeap<CORRUPT_EVERY_N, T> {
+    #[must_use]
+    pub fn insert(self, item: T) -> Self {
+        match self.root {
+            None => Self {
+                root: Some(Pairing::new(item)),
+                size: 1,
+                corrupted: 0,
+            },
+            Some(root) => Self {
+                root: Some(root.insert(item)),
+                size: self.size + 1,
+                corrupted: self.corrupted,
+            },
+        }
+    }
+    #[must_use]
+    pub fn meld(self, other: Self) -> Self {
+        let root = Pairing::meld_option(self.root, other.root);
+        Self {
+            root,
+            size: self.size + other.size,
+            corrupted: self.corrupted + other.corrupted,
+        }
+    }
+    #[must_use]
+    pub fn pop_min(self) -> (Self, Option<T>, Vec<T>) {
+        // TODO: simplify.
+        match self.root {
+            None => (Self::default(), None, vec![]),
+            Some(_root) => {
+                todo!()
+            }
+        }
+    }
+    #[must_use]
+    pub fn heavy_pop_min(self) -> (Self, Option<T>, Vec<T>) {
+        match self.root {
+            None => (Self::default(), None, vec![]),
+            Some(_root) => {
+                todo!()
+            }
+        }
+    }
+}
