@@ -293,13 +293,10 @@ impl<const CORRUPT_EVERY_N: usize, T> Pairing<CORRUPT_EVERY_N, T> {
 }
 
 // const BOUND: usize = 2;
-// const BOUND: usize = 0;
-// const BOUND: usize = usize::MAX/2;
-// const BOUND: usize = 0;
 
 impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     #[must_use]
-    pub fn meld_simple(self, other: Self) -> Self {
+    pub fn meld(self, other: Self) -> Self {
         let (mut a, b) = if self.key.item < other.key.item {
             (self, other)
         } else {
@@ -311,7 +308,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
 
     #[must_use]
     pub fn insert(self, item: T) -> Self {
-        self.meld_simple(Self::new(item))
+        self.meld(Self::new(item))
     }
 
     #[must_use]
@@ -319,7 +316,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         match (me, other) {
             (me, None) => me,
             (None, other) => other,
-            (Some(a), Some(b)) => Some(a.meld_simple(b)),
+            (Some(a), Some(b)) => Some(a.meld(b)),
         }
     }
 
