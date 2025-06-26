@@ -156,9 +156,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
     }
 
     #[must_use]
-    pub fn merge_many(
-        items: impl IntoIterator<Item = UnboundWitnessed<CORRUPT_EVERY_N, T>>,
-    ) -> Option<UnboundWitnessed<CORRUPT_EVERY_N, T>> {
+    pub fn merge_many(items: impl IntoIterator<Item = Self>) -> Option<Self> {
         let mut d: VecDeque<_> = items.into_iter().collect();
         loop {
             match (d.pop_front(), d.pop_front()) {
@@ -169,13 +167,8 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
     }
 
     #[must_use]
-    pub fn merge_children_pass_h(
-        items: Vec<Pairing<CORRUPT_EVERY_N, T>>,
-    ) -> Option<UnboundWitnessed<CORRUPT_EVERY_N, T>> {
-        let mut items = items
-            .into_iter()
-            .map(UnboundWitnessed::from)
-            .collect::<Vec<_>>();
+    pub fn merge_children_pass_h(items: Vec<Pairing<CORRUPT_EVERY_N, T>>) -> Option<Self> {
+        let mut items = items.into_iter().map(Self::from).collect::<Vec<_>>();
 
         let start = items
             .len()
@@ -191,7 +184,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
         let chunked = binding
             .into_iter()
             .filter_map(Self::merge_many)
-            .map(UnboundWitnessed::corrupt);
+            .map(Self::corrupt);
         Self::merge_many(chain!(chunked, last.into_iter()))
     }
 
@@ -203,7 +196,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
     #[must_use]
     pub fn corrupt(self) -> Self {
         // TODO(Matthias): this is like a heavy pop-min, so we should unify?  Maybe..
-        let UnboundWitnessed {
+        let Self {
             pairing:
                 Pairing {
                     key,
@@ -212,7 +205,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
                 },
             to_be_witnessed: mut tbw_c,
         } = self;
-        if let Some(UnboundWitnessed {
+        if let Some(Self {
             pairing,
             mut to_be_witnessed,
         }) = Self::merge_children(children)
@@ -377,6 +370,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
             (a, b, corrupted)
         }
     */
+
     #[must_use]
     pub fn merge_many<I>(items: I) -> Option<Self>
     where
@@ -390,6 +384,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
             }
         }
     }
+
     /*
     pub fn merge_children_multi_pass_binary_implicit(
         mut items: Vec<Self>,
