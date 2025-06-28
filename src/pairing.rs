@@ -2,8 +2,9 @@
 // We do min-heaps by default.
 
 use itertools::{chain, Itertools};
-use std::collections::VecDeque;
+use std::cell::{Ref, RefCell};
 use std::ops::Add;
+use std::{collections::VecDeque, mem};
 
 use crate::witness_set::{Witnessed, WitnessedSet};
 
@@ -286,6 +287,49 @@ impl<const CORRUPT_EVERY_N: usize, T> Pairing<CORRUPT_EVERY_N, T> {
 }
 
 // const BOUND: usize = 2;
+// TODO: let's worry about whether we really need Clone later.  For now, this is simplest.
+impl<const CORRUPT_EVERY_N: usize, T: Ord + Clone> Pairing<CORRUPT_EVERY_N, T> {
+    #[must_use]
+    pub fn merge_children_late(items: Vec<Self>) -> (Option<Self>, WitnessedSet<T>) {
+        todo!()
+        // // This should give =< 1/3 corruption.
+        // let mut total_work: usize = items.len();
+
+        // if let Some(pairing) = Self::merge_many(items) {
+        //     const FIXED_CORRUPT_EVERY_N: usize = 4;
+        //     let mut work_discharged = CORRUPT_EVERY_N;
+
+        //     let mut candidates: Vec<T> = vec![];
+        //     let root = RefCell::new(pairing);
+        //     let mut inner_heap: SoftHeap<4, RefCell<Pairing<CORRUPT_EVERY_N, T>>> =
+        //         SoftHeap::singleton(root.clone());
+        //     while work_discharged < total_work {
+        //         let (new_heap, mut nodes) = inner_heap.pop_min_combined();
+        //         candidates.extend(nodes.iter().map(|node| node.borrow().key.item.clone()));
+        //         inner_heap = new_heap;
+        //         for node in &mut nodes {
+        //             if node.borrow().children.len() > 2 {
+        //                 todo!();
+        //                 // let my_children = mem::take(&mut node.borrow_mut().children);
+        //                 // total_work += my_children.len();
+        //                 // node.borrow_mut()
+        //                 //     .children
+        //                 //     .extend(Self::merge_many(my_children));
+        //             }
+        //             // inner_heap.extend(node.borrow_mut().children.iter_mut().map(RefCell::new));
+        //             for child in node.borrow_mut().children.iter_mut() {
+        //                 inner_heap.insert(RefCell::new(child));
+        //             }
+        //         }
+
+        //         work_discharged += FIXED_CORRUPT_EVERY_N;
+        //     }
+        //     return todo!();
+        // }
+        // // We have no items, so we can't merge anything.
+        // (None, WitnessedSet::default())
+    }
+}
 
 impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     #[must_use]
@@ -936,6 +980,13 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
     }
 
     #[must_use]
+    pub fn pop_min_combined(self) -> (Self, Vec<T>) {
+        let (me, item, mut corrupted) = self.pop_min();
+        corrupted.extend(item);
+        (me, corrupted)
+    }
+
+    #[must_use]
     pub fn pop_min(self) -> (Self, Option<T>, Vec<T>) {
         // TODO: simplify.
         match self.root {
@@ -992,6 +1043,15 @@ impl<const CORRUPT_EVERY_N: usize, T> From<SoftHeap<CORRUPT_EVERY_N, T>> for Vec
     }
 }
 
+impl<const CORRUPT_EVERY_N: usize, T: Ord> Extend<T> for SoftHeap<CORRUPT_EVERY_N, T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        let mut me = mem::take(self);
+        for item in iter {
+            me = me.insert(item);
+        }
+        *self = me;
+    }
+}
 pub struct LateHeap<const CORRUPT_EVERY_N: usize, T> {
     pub root: Option<Pairing<CORRUPT_EVERY_N, T>>,
     pub size: usize,
