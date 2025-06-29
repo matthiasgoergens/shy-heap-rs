@@ -169,7 +169,7 @@ pub fn linear_loop<T: Ord + Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
 
         if deletes * 2 <= inserts {
             // primal
-            let (left_ops, guaranteed_in) = approximate_heap::<CORRUPT_EVERY_N, _>(ops);
+            let (left_ops, guaranteed_in) = approximate_heap(ops, CORRUPT_EVERY_N);
             ops = left_ops;
             result.extend(guaranteed_in);
             assert!(count_inserts(&ops) <= inserts * 2 / 3);
@@ -178,7 +178,7 @@ pub fn linear_loop<T: Ord + Debug + Clone>(ops: Vec<Operation<T>>) -> Vec<T> {
         } else {
             // here we need to dualise.
             let dual_ops = dualise_ops(ops);
-            let (left_over_ops, _guaranteed_out) = approximate_heap::<CORRUPT_EVERY_N, _>(dual_ops);
+            let (left_over_ops, _guaranteed_out) = approximate_heap(dual_ops, CORRUPT_EVERY_N);
             ops = undualise_ops(left_over_ops);
         }
         debug_assert!(count_inserts(&ops) <= inserts * 2 / 3);
@@ -207,8 +207,9 @@ pub fn approximate_heap_2<const CHUNKS: usize, T: Ord + Debug + Clone>(
 }
 
 #[must_use]
-pub fn approximate_heap_oracle<const CHUNKS: usize, T: Ord + Debug + Clone>(
+pub fn approximate_heap_oracle<T: Ord + Debug + Clone>(
     ops: Vec<Operation<T>>,
+    corrupt_every_n: usize,
 ) -> Vec<Operation<(T, Judgement)>> {
     // Preliminary mark all as potential survivors.
     // Later, we will unmark some as uncertain.
@@ -218,10 +219,10 @@ pub fn approximate_heap_oracle<const CHUNKS: usize, T: Ord + Debug + Clone>(
         .collect();
 
     // Run the actual heap operations:
-    let _: SoftHeap<CHUNKS, &mut (T, Judgement)> =
+    let _: SoftHeap<&mut (T, Judgement)> =
         wrapped_ops
             .iter_mut()
-            .fold(SoftHeap::default(), |heap, op| match op {
+            .fold(SoftHeap::new(corrupt_every_n), |heap, op| match op {
                 Operation::Insert(x) => heap.insert(x),
                 Operation::DeleteMin => {
                     let (new_heap, popped_item, corrupted) = heap.pop_min();
@@ -269,18 +270,19 @@ pub fn approximate_heap_oracle<const CHUNKS: usize, T: Ord + Debug + Clone>(
 ///
 /// If you can get k <= n/2, then you can get `guaranteed_survivors` >= n * (1 - 1/6) - n/2 = n/3
 #[must_use]
-pub fn approximate_heap<const CHUNKS: usize, T: Ord + Debug + Clone>(
+pub fn approximate_heap<T: Ord + Debug + Clone>(
     ops: Vec<Operation<T>>,
+    corrupt_every_n: usize,
 ) -> (Vec<Operation<T>>, Vec<T>) {
     // Wrap ops, so we can keep track of tombstones.
     let mut wrapped_ops: Vec<Operation<Option<T>>> =
         ops.into_iter().map(|op| op.map(Some)).collect();
 
     // Run the actual heap operations:
-    let heap: SoftHeap<CHUNKS, &mut Option<T>> =
+    let heap: SoftHeap<&mut Option<T>> =
         wrapped_ops
             .iter_mut()
-            .fold(SoftHeap::default(), |heap, op| match op {
+            .fold(SoftHeap::new(corrupt_every_n), |heap, op| match op {
                 Operation::Insert(x) => heap.insert(x),
                 Operation::DeleteMin => heap.pop_min().0,
             });
@@ -436,7 +438,7 @@ mod tests {
         const EPS: usize = 4;
         // Should really be +1 (?), I think, but we want some slack.
         const CORRUPT_EVERY_N: usize = EPS + 3;
-        let mut pairing: SoftHeap<CORRUPT_EVERY_N, T> = SoftHeap::default();
+        let mut pairing: SoftHeap<T> = SoftHeap::new(CORRUPT_EVERY_N);
         let mut inserts_so_far = 0;
         for op in ops {
             pairing = match op {
@@ -472,7 +474,7 @@ mod tests {
     #[test]
     fn test_enough_corruption() {
         let n = 1000;
-        let mut pairing: SoftHeap<3, _> = SoftHeap::default();
+        let mut pairing = SoftHeap::new(3);
         for i in 0..n {
             pairing = pairing.insert(i);
         }
@@ -495,7 +497,7 @@ mod tests {
         const CORRUPT_EVERY_N: usize = EPS + 1;
 
         let n = 1000;
-        let mut pairing: SoftHeap<CORRUPT_EVERY_N, _> = SoftHeap::default();
+        let mut pairing = SoftHeap::new(CORRUPT_EVERY_N);
         for i in 0..n {
             pairing = pairing.insert(i);
         }

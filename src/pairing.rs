@@ -2,7 +2,6 @@
 // We do min-heaps by default.
 
 use itertools::{chain, Itertools};
-use std::cell::{Ref, RefCell};
 use std::ops::Add;
 use std::{collections::VecDeque, mem};
 
@@ -37,15 +36,13 @@ impl<T> Pool<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct UnboundWitnessed<const CORRUPT_EVERY_N: usize, T> {
-    pub pairing: Pairing<CORRUPT_EVERY_N, T>,
+pub struct UnboundWitnessed<T> {
+    pub pairing: Pairing<T>,
     pub to_be_witnessed: WitnessedSet<T>,
 }
 
-impl<const CORRUPT_EVERY_N: usize, T> From<Pairing<CORRUPT_EVERY_N, T>>
-    for UnboundWitnessed<CORRUPT_EVERY_N, T>
-{
-    fn from(pairing: Pairing<CORRUPT_EVERY_N, T>) -> Self {
+impl<T> From<Pairing<T>> for UnboundWitnessed<T> {
+    fn from(pairing: Pairing<T>) -> Self {
         Self {
             pairing,
             to_be_witnessed: WitnessedSet::default(),
@@ -53,9 +50,9 @@ impl<const CORRUPT_EVERY_N: usize, T> From<Pairing<CORRUPT_EVERY_N, T>>
     }
 }
 
-impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> {
+impl<T: Ord> UnboundWitnessed<T> {
     #[must_use]
-    pub fn extract(me: Option<Self>) -> (Option<Pairing<CORRUPT_EVERY_N, T>>, Vec<T>) {
+    pub fn extract(me: Option<Self>) -> (Option<Pairing<T>>, Vec<T>) {
         if let Some(UnboundWitnessed {
             pairing,
             to_be_witnessed: witnessed,
@@ -82,11 +79,8 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
     #[must_use]
     pub fn pop_min(
         self,
-    ) -> (
-        Option<Pairing<CORRUPT_EVERY_N, T>>,
-        Option<T>,
-        WitnessedSet<T>,
-    ) {
+        corrupt_every_n: usize,
+    ) -> (Option<Pairing<T>>, Option<T>, WitnessedSet<T>) {
         let UnboundWitnessed {
             pairing:
                 Pairing {
@@ -109,7 +103,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
                 if let Some(UnboundWitnessed {
                     to_be_witnessed: tbc,
                     pairing,
-                }) = Self::merge_children(children)
+                }) = Self::merge_children(corrupt_every_n, children)
                 {
                     // This might need to change?  TODO: we always need to do this.
                     to_be_witnessed.extend(witnessed);
@@ -128,11 +122,8 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
 
     pub fn heavy_pop_min(
         self,
-    ) -> (
-        Option<Pairing<CORRUPT_EVERY_N, T>>,
-        Pool<T>,
-        WitnessedSet<T>,
-    ) {
+        corrupt_every_n: usize,
+    ) -> (Option<Pairing<T>>, Pool<T>, WitnessedSet<T>) {
         let UnboundWitnessed {
             pairing:
                 Pairing {
@@ -144,7 +135,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
         } = self;
         to_be_witnessed.extend(witnessed);
 
-        let new_me = Self::merge_children(children).map(
+        let new_me = Self::merge_children(corrupt_every_n, children).map(
             |UnboundWitnessed {
                  to_be_witnessed: tbc,
                  pairing,
@@ -168,34 +159,34 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
     }
 
     #[must_use]
-    pub fn merge_children_pass_h(items: Vec<Pairing<CORRUPT_EVERY_N, T>>) -> Option<Self> {
+    pub fn merge_children_pass_h(corrupt_every_n: usize, items: Vec<Pairing<T>>) -> Option<Self> {
         let mut items = items.into_iter().map(Self::from).collect::<Vec<_>>();
 
         let start = items
             .len()
             .add(1)
-            .next_multiple_of(CORRUPT_EVERY_N)
-            .saturating_sub(CORRUPT_EVERY_N);
+            .next_multiple_of(corrupt_every_n)
+            .saturating_sub(corrupt_every_n);
 
-        assert_eq!(0, start % CORRUPT_EVERY_N);
-        assert!(items.len() - start <= CORRUPT_EVERY_N);
+        assert_eq!(0, start % corrupt_every_n);
+        assert!(items.len() - start <= corrupt_every_n);
 
         let last = Self::merge_many(items.drain(start..));
-        let binding = items.into_iter().chunks(CORRUPT_EVERY_N);
+        let binding = items.into_iter().chunks(corrupt_every_n);
         let chunked = binding
             .into_iter()
             .filter_map(Self::merge_many)
-            .map(Self::corrupt);
+            .map(|x| x.corrupt(corrupt_every_n));
         Self::merge_many(chain!(chunked, last.into_iter()))
     }
 
     #[must_use]
-    pub fn merge_children(children: Vec<Pairing<CORRUPT_EVERY_N, T>>) -> Option<Self> {
-        Self::merge_children_pass_h(children)
+    pub fn merge_children(corrupt_every_n: usize, children: Vec<Pairing<T>>) -> Option<Self> {
+        Self::merge_children_pass_h(corrupt_every_n, children)
     }
 
     #[must_use]
-    pub fn corrupt(self) -> Self {
+    pub fn corrupt(self, corrupt_every_n: usize) -> Self {
         // TODO(Matthias): this is like a heavy pop-min, so we should unify?  Maybe..
         let Self {
             pairing:
@@ -209,7 +200,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
         if let Some(Self {
             pairing,
             mut to_be_witnessed,
-        }) = Self::merge_children(children)
+        }) = Self::merge_children(corrupt_every_n, children)
         {
             // assert!(key.item <= pairing.key.item);
             tbw_c.extend(witnessed);
@@ -238,13 +229,13 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> UnboundWitnessed<CORRUPT_EVERY_N, T> 
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct Pairing<const CORRUPT_EVERY_N: usize, T> {
+pub struct Pairing<T> {
     pub key: Pool<T>,
     pub witnessed: WitnessedSet<T>,
-    pub children: Vec<Pairing<CORRUPT_EVERY_N, T>>,
+    pub children: Vec<Pairing<T>>,
 }
 
-impl<const CORRUPT_EVERY_N: usize, T> From<Pool<T>> for Pairing<CORRUPT_EVERY_N, T> {
+impl<T> From<Pool<T>> for Pairing<T> {
     fn from(key: Pool<T>) -> Self {
         Self {
             key,
@@ -254,7 +245,7 @@ impl<const CORRUPT_EVERY_N: usize, T> From<Pool<T>> for Pairing<CORRUPT_EVERY_N,
     }
 }
 
-impl<const CORRUPT_EVERY_N: usize, T> Pairing<CORRUPT_EVERY_N, T> {
+impl<T> Pairing<T> {
     pub fn new(item: T) -> Self {
         Self::from(Pool::new(item))
     }
@@ -288,9 +279,9 @@ impl<const CORRUPT_EVERY_N: usize, T> Pairing<CORRUPT_EVERY_N, T> {
 
 // const BOUND: usize = 2;
 // TODO: let's worry about whether we really need Clone later.  For now, this is simplest.
-impl<const CORRUPT_EVERY_N: usize, T: Ord + Clone> Pairing<CORRUPT_EVERY_N, T> {
+impl<T: Ord + Clone> Pairing<T> {
     #[must_use]
-    pub fn merge_children_late(items: Vec<Self>) -> (Option<Self>, WitnessedSet<T>) {
+    pub fn merge_children_late(_items: Vec<Self>) -> (Option<Self>, WitnessedSet<T>) {
         todo!()
         // // This should give =< 1/3 corruption.
         // let mut total_work: usize = items.len();
@@ -301,7 +292,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord + Clone> Pairing<CORRUPT_EVERY_N, T> {
 
         //     let mut candidates: Vec<T> = vec![];
         //     let root = RefCell::new(pairing);
-        //     let mut inner_heap: SoftHeap<4, RefCell<Pairing<CORRUPT_EVERY_N, T>>> =
+        //     let mut inner_heap: SoftHeap<4, RefCell<Pairing<T>>> =
         //         SoftHeap::singleton(root.clone());
         //     while work_discharged < total_work {
         //         let (new_heap, mut nodes) = inner_heap.pop_min_combined();
@@ -331,7 +322,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord + Clone> Pairing<CORRUPT_EVERY_N, T> {
     }
 }
 
-impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
+impl<T: Ord> Pairing<T> {
     #[must_use]
     pub fn meld(self, other: Self) -> Self {
         let (mut a, b) = if self.key.item < other.key.item {
@@ -378,7 +369,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         /// Panics if the heap property is violated (when the key's item is greater than
         /// the merged pairing's key item).
         #[must_use]
-        pub fn corrupt(self) -> UnboundWitnessed<CORRUPT_EVERY_N, T> {
+        pub fn corrupt(self) -> UnboundWitnessed<T> {
             let Pairing { key, children , witnessed} = self;
             match Self::merge_children(children) {
                 None => Pairing::from(key),
@@ -539,7 +530,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
     //     Self::merge_many(chain!(chunked, once(last).flatten()))
     // }
 
-    pub fn merge_children_pass_h(mut items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<UnboundWitnessed<CORRUPT_EVERY_N, T>> {
+    pub fn merge_children_pass_h(mut items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<UnboundWitnessed<T>> {
         let end = items.len() % CORRUPT_EVERY_N;
         let start = items.len() - end;
         let start0 = previous_full_multiple(items.len(), CORRUPT_EVERY_N);
@@ -643,7 +634,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
         items: Vec<Self>,
         corrupted: &mut Vec<T>,
     ) -> Option<Self> {
-        let mut queue: VecDeque<Pairing<CORRUPT_EVERY_N, T>> = VecDeque::from(items);
+        let mut queue: VecDeque<Pairing<T>> = VecDeque::from(items);
         loop {
             if queue.len() <= CORRUPT_EVERY_N {
                 return Self::merge_many(queue);
@@ -815,7 +806,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
             })
     }
 
-    pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<UnboundWitnessed<CORRUPT_EVERY_N, T>> {
+    pub fn merge_children(items: Vec<Self>, corrupted: &mut Vec<T>) -> Option<UnboundWitnessed<T>> {
         // These two work, really well:
         // Self::merge_children_multi_pass_binary(items, corrupted)
         // Self::merge_children_multi_pass_binary_implicit(items, corrupted)
@@ -883,8 +874,8 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> Pairing<CORRUPT_EVERY_N, T> {
 }
 
 // Get all non-corrupted elements still in the heap.
-impl<const CORRUPT_EVERY_N: usize, T> From<Pairing<CORRUPT_EVERY_N, T>> for Vec<T> {
-    fn from(pairing: Pairing<CORRUPT_EVERY_N, T>) -> Self {
+impl<T> From<Pairing<T>> for Vec<T> {
+    fn from(pairing: Pairing<T>) -> Self {
         // Pre-order traversal.
         let mut items = vec![];
         let mut todo = VecDeque::from([pairing]);
@@ -906,46 +897,47 @@ impl<const CORRUPT_EVERY_N: usize, T> From<Pairing<CORRUPT_EVERY_N, T>> for Vec<
 // Also: actually use the soft pairing heap for my Schubert matroid.
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct SoftHeap<const CORRUPT_EVERY_N: usize, T> {
-    pub root: Option<Pairing<CORRUPT_EVERY_N, T>>,
+pub struct SoftHeap<T> {
+    pub root: Option<Pairing<T>>,
     pub size: usize,
     pub corrupted: usize,
+    pub corrupt_every_n: usize,
 }
 
-impl<const CORRUPT_EVERY_N: usize, T> Default for SoftHeap<CORRUPT_EVERY_N, T> {
-    fn default() -> Self {
-        Self {
-            root: None,
-            size: 0,
-            corrupted: 0,
-        }
-    }
-}
-
-impl<const CORRUPT_EVERY_N: usize, T> SoftHeap<CORRUPT_EVERY_N, T> {
+impl<T> SoftHeap<T> {
     #[must_use]
-    pub fn singleton(item: T) -> Self {
+    pub fn singleton(corrupt_every_n: usize, item: T) -> Self {
         Self {
             root: Some(Pairing::new(item)),
             size: 1,
             corrupted: 0,
+            corrupt_every_n,
+        }
+    }
+    #[must_use]
+    pub fn new(corrupt_every_n: usize) -> Self {
+        Self {
+            root: None,
+            size: 0,
+            corrupted: 0,
+            corrupt_every_n,
         }
     }
 }
 
-impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
+impl<T: Ord> SoftHeap<T> {
     #[must_use]
     pub fn insert(self, item: T) -> Self {
         match self.root {
             None => Self {
                 root: Some(Pairing::new(item)),
                 size: 1,
-                corrupted: 0,
+                ..self
             },
             Some(root) => Self {
                 root: Some(root.insert(item)),
                 size: self.size + 1,
-                corrupted: self.corrupted,
+                ..self
             },
         }
     }
@@ -957,20 +949,23 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
             root,
             size: self.size + other.size,
             corrupted: self.corrupted + other.corrupted,
+            corrupt_every_n: self.corrupt_every_n,
         }
     }
 
     #[must_use]
     pub fn heavy_pop_min(self) -> (Self, Option<T>, Vec<T>) {
         match self.root {
-            None => (Self::default(), None, vec![]),
+            None => (self, None, vec![]),
             Some(root) => {
-                let (root, pool, corrupted) = UnboundWitnessed::from(root).heavy_pop_min();
+                let (root, pool, corrupted) =
+                    UnboundWitnessed::from(root).heavy_pop_min(self.corrupt_every_n);
                 (
                     Self {
                         root,
                         size: self.size - pool.count - 1,
                         corrupted: self.corrupted + corrupted.count - pool.count,
+                        corrupt_every_n: self.corrupt_every_n,
                     },
                     Some(pool.item),
                     Vec::from(corrupted),
@@ -990,14 +985,16 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
     pub fn pop_min(self) -> (Self, Option<T>, Vec<T>) {
         // TODO: simplify.
         match self.root {
-            None => (Self::default(), None, vec![]),
+            None => (self, None, vec![]),
             Some(root) => {
-                let (root, item, corrupted) = UnboundWitnessed::from(root).pop_min();
+                let (root, item, corrupted) =
+                    UnboundWitnessed::from(root).pop_min(self.corrupt_every_n);
                 (
                     Self {
                         root,
                         size: self.size - 1,
                         corrupted: self.corrupted + corrupted.count - usize::from(item.is_none()),
+                        corrupt_every_n: self.corrupt_every_n,
                     },
                     item,
                     Vec::from(corrupted),
@@ -1006,7 +1003,7 @@ impl<const CORRUPT_EVERY_N: usize, T: Ord> SoftHeap<CORRUPT_EVERY_N, T> {
         }
     }
 }
-impl<const CORRUPT_EVERY_N: usize, T> SoftHeap<CORRUPT_EVERY_N, T> {
+impl<T> SoftHeap<T> {
     pub fn count_delayed_corruption(&self) -> usize {
         self.root
             .as_ref()
@@ -1037,28 +1034,29 @@ impl<const CORRUPT_EVERY_N: usize, T> SoftHeap<CORRUPT_EVERY_N, T> {
     }
 }
 
-impl<const CORRUPT_EVERY_N: usize, T> From<SoftHeap<CORRUPT_EVERY_N, T>> for Vec<T> {
-    fn from(SoftHeap { root, .. }: SoftHeap<CORRUPT_EVERY_N, T>) -> Self {
+impl<T> From<SoftHeap<T>> for Vec<T> {
+    fn from(SoftHeap { root, .. }: SoftHeap<T>) -> Self {
         root.map(Vec::from).unwrap_or_default()
     }
 }
 
-impl<const CORRUPT_EVERY_N: usize, T: Ord> Extend<T> for SoftHeap<CORRUPT_EVERY_N, T> {
+impl<T: Ord> Extend<T> for SoftHeap<T> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
-        let mut me = mem::take(self);
+        // TODO(Matthias): do we really need to replace self?  Can we do this with some borrowing?
+        let mut me = mem::replace(self, Self::new(self.corrupt_every_n));
         for item in iter {
             me = me.insert(item);
         }
         *self = me;
     }
 }
-pub struct LateHeap<const CORRUPT_EVERY_N: usize, T> {
-    pub root: Option<Pairing<CORRUPT_EVERY_N, T>>,
+pub struct LateHeap<T> {
+    pub root: Option<Pairing<T>>,
     pub size: usize,
     pub corrupted: usize,
 }
 
-impl<const CORRUPT_EVERY_N: usize, T> Default for LateHeap<CORRUPT_EVERY_N, T> {
+impl<T> Default for LateHeap<T> {
     fn default() -> Self {
         Self {
             root: None,
@@ -1068,7 +1066,7 @@ impl<const CORRUPT_EVERY_N: usize, T> Default for LateHeap<CORRUPT_EVERY_N, T> {
     }
 }
 
-impl<const CORRUPT_EVERY_N: usize, T: Ord> LateHeap<CORRUPT_EVERY_N, T> {
+impl<T: Ord> LateHeap<T> {
     #[must_use]
     pub fn insert(self, item: T) -> Self {
         match self.root {

@@ -20,3 +20,9 @@ For now, try a fixed `epsilon` inner-soft-heap.  Afterwards, we can explore.
 ---
 
 Hmm, our original heap is a min-heap, and the soft-heap we are using for the selection is also a min-heap.  Can we use the same?  Well, let's implement the simplest way first, and then we can generalise / embed.  (Especially since we corrupt / pool together almost everything in the ephemeral heap anyway, so its structure will be thrown away.)
+
+---
+
+Move to giving BOUND as a runtime parameter, so we can experiment with it during one run.  Instead of having to recompile.
+
+Then make a big table?

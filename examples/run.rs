@@ -19,7 +19,7 @@ use softheap::{
 }; // Add import for seq_macro
 
 pub fn dbg() {
-    let a: UnboundWitnessed<EVERY, i32> = {
+    let a: UnboundWitnessed<i32> = {
         let mut to_be_witnessed = WitnessedSet::<i32>::default();
         to_be_witnessed.add_child(Witnessed::singleton(1));
         UnboundWitnessed {
@@ -28,7 +28,7 @@ pub fn dbg() {
         }
     };
 
-    let b: UnboundWitnessed<EVERY, i32> = {
+    let b: UnboundWitnessed<i32> = {
         let mut to_be_witnessed = WitnessedSet::<i32>::default();
         to_be_witnessed.add_child(Witnessed::singleton(3));
         UnboundWitnessed {
@@ -46,7 +46,7 @@ pub fn one_batch_db() {
     println!("EVERY: {EVERY} one_batch debug");
     let e = 15;
     let n = 1 << e;
-    let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
+    let mut pairing: SoftHeap<_> = SoftHeap::new(EVERY);
     let mut x = (0..n).collect::<Vec<_>>();
     x.shuffle(&mut rand::rng());
     let (_counter, x) = with_counter(x);
@@ -83,7 +83,7 @@ pub fn one_batch() {
     for e in 0..30 {
         let n = 1 << e;
 
-        let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
+        let mut pairing: SoftHeap<_> = SoftHeap::new(EVERY);
         let mut x = (0..n).collect::<Vec<_>>();
 
         x.shuffle(&mut rand::rng());
@@ -155,8 +155,10 @@ pub fn one_batch_meld() {
         let n = 1 << e;
 
         let (counter, x) = with_counter((0..n).collect::<Vec<_>>());
-        let mut x: Vec<SoftHeap<EVERY, _>> =
-            x.into_iter().map(SoftHeap::singleton).collect::<Vec<_>>();
+        let mut x: Vec<SoftHeap<_>> = x
+            .into_iter()
+            .map(|item| SoftHeap::singleton(EVERY, item))
+            .collect();
 
         while x.len() > 1 {
             let a = sample_swap_pop(&mut x);
@@ -232,7 +234,7 @@ pub fn interleave() {
     for e in 0..30 {
         let n = 1 << e;
 
-        let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
+        let mut pairing: SoftHeap<_> = SoftHeap::new(EVERY);
 
         let mut all_corrupted = 0;
         let mut non_corrupted_pops = 0;
@@ -301,7 +303,7 @@ pub fn interleave1<const EVERY: usize>() -> f64 {
 
     let n = 1 << e;
 
-    let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
+    let mut pairing: SoftHeap<_> = SoftHeap::new(EVERY);
 
     let mut all_corrupted = 0;
     let mut _non_corrupted_pops = 0; // Changed to _non_corrupted_pops
@@ -340,7 +342,7 @@ pub fn sort1<const EVERY: usize>() -> (f64, f64) {
     let n = 1 << e;
     let mut max_corrupted = 0;
 
-    let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
+    let mut pairing: SoftHeap<_> = SoftHeap::new(EVERY);
 
     let mut all_corrupted = 0;
     let mut _non_corrupted_pops = 0; // Changed to _non_corrupted_pops
@@ -449,7 +451,7 @@ pub fn one_batch_parallel() {
     run_parallel(0..25, |e| {
         let n = 1 << e;
 
-        let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
+        let mut pairing: SoftHeap<_> = SoftHeap::new(EVERY);
         let mut x = (0..n).collect::<Vec<_>>();
 
         x.shuffle(&mut rand::rng());
@@ -459,7 +461,7 @@ pub fn one_batch_parallel() {
         }
 
         let prep_count = counter.get();
-        let count_ratio = prep_count as f64 / (n as f64 - 1.0);
+        let _count_ratio = prep_count as f64 / (n as f64 - 1.0);
 
         let mut all_corrupted = 0;
         let mut max_corrupted = 0;
@@ -477,7 +479,7 @@ pub fn one_batch_parallel() {
         let remaining_work_per_n = remaining_work as f64 / n as f64;
         let log_factor = remaining_work_per_n / ((n as f64).log2());
 
-        let eps_work = (-max_corrupted_fraction.log2());
+        let eps_work = -max_corrupted_fraction.log2();
         let eps_work_factor = remaining_work_per_n / eps_work;
 
         format!(
@@ -495,7 +497,7 @@ pub fn one_batch_parallel() {
 fn one_batch_single(e: usize) -> String {
     let n = 1 << e;
 
-    let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
+    let mut pairing: SoftHeap<_> = SoftHeap::new(EVERY);
     let mut x = (0..n).collect::<Vec<_>>();
 
     x.shuffle(&mut rand::rng());
