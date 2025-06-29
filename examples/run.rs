@@ -2,7 +2,7 @@
 //  RUST_MIN_STACK=16777216 cargo run --release --example run
 
 // const EVERY: usize = 2;
-const EVERY: usize = 4;
+const EVERY: usize = 3;
 // const ELOG: usize = EVERY.next_power_of_two().ilog2() as usize;
 const MAX_THREADS: usize = 32; // Configurable number of processors for parallel execution
 
@@ -446,7 +446,7 @@ where
 pub fn one_batch_parallel() {
     println!("EVERY: {EVERY} one_batch random (parallel with {MAX_THREADS} threads)");
 
-    run_parallel(0..30, |e| {
+    run_parallel(0..25, |e| {
         let n = 1 << e;
 
         let mut pairing: SoftHeap<EVERY, _> = SoftHeap::default();
@@ -478,13 +478,12 @@ pub fn one_batch_parallel() {
         let log_factor = remaining_work_per_n / ((n as f64).log2());
 
         let eps_work = (-max_corrupted_fraction.log2());
-        let eps_work_factor = eps_work / remaining_work_per_n;
+        let eps_work_factor = remaining_work_per_n / eps_work;
 
         format!(
-            "cmp: {prep_count:10}\tcmp_ratio: {count_ratio:10.6}\tcrp: {all_corrupted:10}\tEver crp: {:8.5}%\texpo: {e:3}\tn: {n:10}\tMax crp: {:8.5}%\trem work: {:10.6}\trem work/n: {:10.6}\tlog-factor: {:10.6}\teps_work_factor: {:10.6}\n",
+            "{e:3}:  Ever crp: {:8.5}%  Max crp: {:8.5}%  rem work/n: {:8.6}  log-factor: {:8.6}  eps_work_f: {:8.6}\n",
             ever_corrupted_fraction * 100.0,
             max_corrupted_fraction * 100.0,
-            remaining_work,
             remaining_work_per_n,
             log_factor,
             eps_work_factor,
